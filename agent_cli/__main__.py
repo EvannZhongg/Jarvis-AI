@@ -3,7 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agent_core import Agent, JsonlSessionStore, Session
+from agent_core import Agent, GetCurrentTimeTool, JsonlSessionStore, Session
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
 
@@ -44,6 +44,7 @@ def main() -> None:
         ),
         session=session,
         system_prompt=load_system_prompt(),
+        tools=(GetCurrentTimeTool(),),
     )
 
     print(f"Session: {session.session_id}")
@@ -65,9 +66,7 @@ def main() -> None:
             session.session_id,
             result.request,
             result.response,
-            result.user_input,
-            result.request_timestamp_utc,
-            result.response_timestamp_utc,
+            result.items,
         )
         local_time = result.response_timestamp_utc.astimezone().isoformat(
             timespec="seconds"

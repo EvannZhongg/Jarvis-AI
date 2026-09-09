@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .llm import LLMRequest, LLMResponse
 from .session import Message, Session
+from .tools import ToolCall
 
 
 class JsonlSessionStore:
@@ -14,54 +15,36 @@ class JsonlSessionStore:
         if not self._path.exists():
             return Session(session_id=session_id)
 
-        messages = []
+        items = []
         with self._path.open(encoding="utf-8") as file:
             for line in file:
                 record = json.loads(line)
                 if record["session_id"] == session_id:
-                    messages.extend(
-                        [
-                            Message(
-                                role="user",
-                                content=record["request"]["input"],
-                                timestamp_utc=_parse_utc(
-                                    record["request"]["timestamp_utc"]
-                                ),
-                            ),
-                            Message(
-                                role="assistant",
-                                content=record["response"]["content"],
-                                timestamp_utc=_parse_utc(
-                                    record["response"]["timestamp_utc"]
-                                ),
-                            ),
-                        ]
+                    items.extend(
+                        _message_from_dict(item)
+                        for item in record["items"]
                     )
 
-        return Session(session_id=session_id, messages=messages)
+        return Session(session_id=session_id, items=items)
 
     def append_turn(
         self,
         session_id: str,
         request: LLMRequest,
         response: LLMResponse,
-        user_input: str,
-        request_timestamp_utc: datetime,
-        response_timestamp_utc: datetime,
+        items: tuple[Message, ...],
     ) -> None:
         record = {
             "session_id": session_id,
+            "items": [_message_to_dict(item) for item in items],
             "request": {
-                "timestamp_utc": _format_utc(request_timestamp_utc),
-                "input": user_input,
                 "system_prompt": request.system_prompt,
                 "messages": [
-                    {"role": message.role, "content": message.content}
+                    _message_to_dict(message)
                     for message in request.messages
-                ]
+                ],
             },
             "response": {
-                "timestamp_utc": _format_utc(response_timestamp_utc),
                 "content": response.content,
                 "usage": (
                     {
@@ -74,8 +57,70 @@ class JsonlSessionStore:
                 ),
             },
         }
+        if response.tool_calls:
+            record["response"]["tool_calls"] = [
+                {
+                    "id": tool_call.id,
+                    "name": tool_call.name,
+                    "arguments": tool_call.arguments,
+                }
+                for tool_call in response.tool_calls
+            ]
+        if request.tools:
+            record["request"]["tools"] = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                }
+                for tool in request.tools
+            ]
         with self._path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _message_to_dict(message: Message) -> dict[str, object]:
+    data: dict[str, object] = {
+        "role": message.role,
+        "content": message.content,
+    }
+    if message.timestamp_utc is not None:
+        data["timestamp_utc"] = _format_utc(message.timestamp_utc)
+    if message.tool_calls:
+        data["tool_calls"] = [
+            {
+                "id": tool_call.id,
+                "name": tool_call.name,
+                "arguments": tool_call.arguments,
+            }
+            for tool_call in message.tool_calls
+        ]
+    if message.tool_call_id is not None:
+        data["tool_call_id"] = message.tool_call_id
+    return data
+
+
+def _message_from_dict(data: dict[str, object]) -> Message:
+    timestamp_utc = data.get("timestamp_utc")
+    tool_calls = data.get("tool_calls", [])
+    return Message(
+        role=data["role"],
+        content=data.get("content"),
+        timestamp_utc=(
+            _parse_utc(timestamp_utc)
+            if isinstance(timestamp_utc, str)
+            else None
+        ),
+        tool_calls=tuple(
+            ToolCall(
+                id=tool_call["id"],
+                name=tool_call["name"],
+                arguments=tool_call["arguments"],
+            )
+            for tool_call in tool_calls
+        ),
+        tool_call_id=data.get("tool_call_id"),
+    )
 
 
 def _format_utc(value: datetime) -> str:

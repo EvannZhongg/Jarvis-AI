@@ -1,7 +1,5 @@
 # Jarvis
 
-第一阶段 MVP：一个基于 LiteLLM 的多轮交互式 CLI Agent。
-
 ## 安装
 
 ```bash
@@ -60,7 +58,14 @@ python -m agent_cli
 的 `system` 消息。System Prompt 保持固定，不注入当前时间，以免破坏模型
 的前缀 KV Cache。
 
-历史 `user` 和 `assistant` 消息也会在发送给 LLM 时附带各自的交互时间：
+Session 使用 `items` 保存完整执行上下文，包括：
+
+* `user` 输入
+* 带 `tool_calls` 的 `assistant` item
+* 带 `tool_call_id` 的 `tool` 执行结果
+* 最终 `assistant` 回答
+
+其中 `user` 和 `assistant` item 在发送给 LLM 时会附带各自的交互时间：
 
 ```text
 [2026-09-09T16:00:00+08:00] 历史消息内容
@@ -68,26 +73,85 @@ python -m agent_cli
 
 时间使用运行机器的本地时区，并以最小前缀形式放在每条交互消息开头。
 
-启动时会显示自动生成的 Session ID。每轮成功对话都会把发送给 LLM 的
-完整消息上下文、模型响应和 UTC 时间追加到 `sessions.jsonl`：
+## Tool Call
+
+Tool 能力位于独立的 `agent_core/tools/`。每个 Tool 提供模型可见的
+`ToolDefinition`，并通过统一的 `execute(arguments)` 接口执行。
+`ToolRegistry` 负责按名称注册和调用 Tool。
+
+`LLMResponse` 同时支持普通文本和 Tool Call：
+
+```python
+LLMResponse(
+    content=None,
+    tool_calls=(
+        ToolCall(
+            id="call_123",
+            name="get_current_time",
+            arguments={},
+        ),
+    ),
+)
+```
+
+`Agent.run()` 会显式执行以下循环：
+
+1. 将注册 Tool 的定义随 `LLMRequest` 发送给模型。
+2. 模型返回 Tool Call 时，由 `ToolRegistry` 执行。
+3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
+4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
+
+当前不设置 Tool Call 次数或 Agent Loop 步数限制。CLI 默认注册
+`GetCurrentTimeTool`。
+
+启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
+Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
+`sessions.jsonl`：
 
 ```json
 {
   "session_id": "...",
+  "items": [
+    {
+      "role": "user",
+      "content": "现在几点？",
+      "timestamp_utc": "2026-09-09T08:00:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "timestamp_utc": "2026-09-09T08:00:01Z",
+      "tool_calls": [
+        {
+          "id": "call_123",
+          "name": "get_current_time",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"ok\": true, \"output\": {\"datetime\": \"2026-09-09T16:00:01+08:00\"}}",
+      "timestamp_utc": "2026-09-09T08:00:01Z",
+      "tool_call_id": "call_123"
+    },
+    {
+      "role": "assistant",
+      "content": "现在是 16:00。",
+      "timestamp_utc": "2026-09-09T08:00:02Z"
+    }
+  ],
   "request": {
-    "timestamp_utc": "2026-09-09T08:00:00Z",
-    "input": "hello",
     "system_prompt": "You are Jarvis...",
     "messages": [
       {
         "role": "user",
-        "content": "[2026-09-09T16:00:00+08:00] hello"
+        "content": "[2026-09-09T16:00:00+08:00] 现在几点？"
       }
     ]
   },
   "response": {
-    "timestamp_utc": "2026-09-09T08:00:01Z",
-    "content": "...",
+    "content": "现在是 16:00。",
     "usage": {
       "input_tokens": 120,
       "output_tokens": 35,
@@ -97,7 +161,9 @@ python -m agent_cli
 }
 ```
 
-文件中每行都是一个完整 JSON 对象。CLI 将 UTC 时间转换成本机时区后显示：
+文件中每行都是一个完整 JSON 对象。恢复 Session 时直接读取 `items`，
+因此 Tool Call 和 Tool Result 也会进入后续模型上下文。CLI 将最终响应的
+UTC 时间转换成本机时区后显示：
 
 `usage` 来自模型服务返回的 token 用量。如果服务商没有返回 usage，
 该字段记录为 `null`。
