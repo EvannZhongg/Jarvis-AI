@@ -54,7 +54,7 @@ python -m agent_cli
 
 输入 `exit` 或 `quit` 退出。
 
-每次模型请求都会将 `agent_core/prompts/system_prompt.md` 作为第一条
+每次模型请求都会将 `agent_core/prompts/Soul.md` 作为第一条
 系统指令加载到 `LLMRequest.system_prompt`。Agent Core 不决定系统指令在
 具体模型 API 中的表达方式；当前由 `LiteLLMProvider` 将其转换为 LiteLLM
 的 `system` 消息。System Prompt 保持固定，不注入当前时间，以免破坏模型

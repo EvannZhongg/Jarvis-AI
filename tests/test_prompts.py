@@ -8,7 +8,7 @@ class PromptsTest(unittest.TestCase):
         prompt = load_system_prompt()
 
         self.assertTrue(prompt)
-        self.assertIn("You are Jarvis", prompt)
+        self.assertIn("I am Jarvis", prompt)
 
 
 if __name__ == "__main__":
