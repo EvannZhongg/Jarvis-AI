@@ -61,12 +61,17 @@ def main() -> None:
             continue
 
         result = agent.run(user_input)
-        timestamp_utc = store.append_turn(
+        store.append_turn(
             session.session_id,
             result.request,
             result.response,
+            result.user_input,
+            result.request_timestamp_utc,
+            result.response_timestamp_utc,
         )
-        local_time = timestamp_utc.astimezone().isoformat(timespec="seconds")
+        local_time = result.response_timestamp_utc.astimezone().isoformat(
+            timespec="seconds"
+        )
         print(f"Assistant [{local_time}]: {result.response.content}")
 
 

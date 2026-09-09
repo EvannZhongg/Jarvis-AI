@@ -1,6 +1,6 @@
 from litellm import completion
 
-from agent_core.llm import LLMProvider, LLMRequest, LLMResponse
+from agent_core.llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
 
 
 class LiteLLMProvider(LLMProvider):
@@ -20,8 +20,21 @@ class LiteLLMProvider(LLMProvider):
             base_url=self._base_url,
             api_key=self._api_key,
             messages=[
+                {"role": "system", "content": request.system_prompt},
+                *[
                 {"role": message.role, "content": message.content}
                 for message in request.messages
+                ],
             ],
         )
-        return LLMResponse(content=response.choices[0].message.content)
+        usage = response.usage
+        return LLMResponse(
+            content=response.choices[0].message.content,
+            usage=TokenUsage(
+                input_tokens=usage.prompt_tokens,
+                output_tokens=usage.completion_tokens,
+                total_tokens=usage.total_tokens,
+            )
+            if usage is not None
+            else None,
+        )

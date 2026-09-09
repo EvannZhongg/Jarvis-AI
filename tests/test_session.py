@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 from agent_core import Message, Session
 
@@ -6,14 +7,19 @@ from agent_core import Message, Session
 class SessionTest(unittest.TestCase):
     def test_adds_messages_in_order(self) -> None:
         session = Session(session_id="session-1")
+        timestamp = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
 
-        session.add_message("user", "hello")
+        session.add_message("user", "hello", timestamp)
         session.add_message("assistant", "hi")
 
         self.assertEqual(
             session.messages,
             [
-                Message(role="user", content="hello"),
+                Message(
+                    role="user",
+                    content="hello",
+                    timestamp_utc=timestamp,
+                ),
                 Message(role="assistant", content="hi"),
             ],
         )
