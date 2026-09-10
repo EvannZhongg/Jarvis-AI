@@ -2,11 +2,14 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from .tools.config import ToolConfig, load_tool_config
+
 
 @dataclass(frozen=True)
 class AgentConfig:
     max_same_tool_calls: int
     max_output_tokens: int
+    tools: ToolConfig
 
 
 def load_agent_config(path: Path) -> AgentConfig:
@@ -21,10 +24,12 @@ def load_agent_config(path: Path) -> AgentConfig:
         data,
         "max_output_tokens",
     )
+    tools = load_tool_config(data.get("tools"))
 
     return AgentConfig(
         max_same_tool_calls=max_same_tool_calls,
         max_output_tokens=max_output_tokens,
+        tools=tools,
     )
 
 

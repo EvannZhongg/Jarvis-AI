@@ -1,5 +1,5 @@
-from .base import JSONValue, Tool, ToolDefinition
-from ..workspace import Workspace
+from ..base import JSONValue, Tool, ToolDefinition
+from ...workspace import Workspace
 
 
 class ListDirectoryTool(Tool):

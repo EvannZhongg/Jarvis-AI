@@ -22,13 +22,17 @@ Agent 的全局行为配置位于 `agent_config.json`：
 ```json
 {
   "max_same_tool_calls": 5,
-  "max_output_tokens": 8192
+  "max_output_tokens": 8192,
+  "tools": {
+    "read_file": true,
+    ...
+    "shell": true
+  }
 }
 ```
 
 `max_same_tool_calls` 表示一次 `Agent.run()` 内完全相同的 Tool Call
-最多可被连续执行的次数。Tool 名称和参数都相同才视为相同调用，Tool Call
-ID 不参与比较。连续执行 5 次后仍再次请求相同调用时，Agent 会终止本轮
+最多可被连续执行的次数。Tool 名称和参数都相同才视为相同调用，连续执行请求相同调用时，Agent 会终止本轮
 执行并抛出 `ToolCallLimitExceededError`。Tool 名称或参数发生变化都会
 重置连续计数，每次新的 `Agent.run()` 也会重新计数。
 
@@ -37,6 +41,10 @@ ID 不参与比较。连续执行 5 次后仍再次请求相同调用时，Agent
 Tool 定义）的 token 数。输入超过模型最大上下文减去
 `max_output_tokens` 后的可用空间时，会在请求模型前抛出
 `ContextWindowExceededError`。
+
+`tools` 用于管理内置 Tool。值为 `true` 时注册并开放给模型，值为
+`false` 时不注册。所有已支持的 Tool 都需要显式配置；未知 Tool 名称、
+缺少配置或使用非布尔值都会导致启动失败。
 
 在 `provider_config.json` 顶部通过 `provider` 选择当前使用的服务商。
 每个服务商分别配置 LiteLLM 模型名、API URL 和密钥：
@@ -120,8 +128,10 @@ Session 使用 `items` 保存完整执行上下文，包括：
 
 ## Tool Call
 
-Tool 能力位于独立的 `agent_core/tools/`。每个 Tool 提供模型可见的
+Tool 公共接口和管理代码位于 `agent_core/tools/`，具体内置 Tool 统一位于
+二级路径 `agent_core/tools/builtin/`。每个 Tool 提供模型可见的
 `ToolDefinition`，并通过统一的 `execute(arguments)` 接口执行。
+`create_tools()` 根据 `agent_config.json` 的 `tools` 配置统一完成实例化；
 `ToolRegistry` 负责按名称注册和调度 Tool，并在 Tool 执行前调用注入的
 Policy。当前仅提供 `ShellApprovalPolicy` 处理 shell 人工确认，没有引入
 完整的 Policy Engine。
@@ -171,10 +181,10 @@ LLMResponse(
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
-执行次数由 `agent_config.json` 限制。CLI 默认注册
-`ReadFileTool`、`EditFileTool`、`SearchFilesTool` 和
-`ListDirectoryTool`，以及用于执行命令的 `ShellTool`。文件工具只接受
-Workspace 内的相对路径；
+执行次数由 `agent_config.json` 限制。CLI 根据 `tools` 配置注册
+`ReadFileTool`、`EditFileTool`、`SearchFilesTool`、
+`ListDirectoryTool` 和 `ShellTool`。文件工具只接受 Workspace 内的相对
+路径；
 `search_files` 使用 Python 正则表达式递归搜索 UTF-8 文件内容，
 `list_directory` 返回指定目录的直接子项，`edit_file` 使用 `old_text`
 和 `new_text` 对唯一匹配的文本进行替换。`shell` 以 Workspace 为当前

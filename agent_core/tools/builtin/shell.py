@@ -1,7 +1,7 @@
 from dataclasses import asdict
 
-from ..execution import CommandExecutor
-from .base import JSONValue, Tool, ToolDefinition
+from ...execution import CommandExecutor
+from ..base import JSONValue, Tool, ToolDefinition
 
 
 class ShellTool(Tool):

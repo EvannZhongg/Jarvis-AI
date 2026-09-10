@@ -1,4 +1,11 @@
 {
   "max_same_tool_calls": 5,
-  "max_output_tokens": 8192
+  "max_output_tokens": 8192,
+  "tools": {
+    "read_file": true,
+    "edit_file": true,
+    "search_files": true,
+    "list_directory": true,
+    "shell": true
+  }
 }

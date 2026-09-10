@@ -14,9 +14,11 @@ from agent_core import (
     ShellTool,
     Tool,
     ToolCall,
+    ToolConfig,
     ToolDefinition,
     ToolRegistry,
     Workspace,
+    create_tools,
 )
 
 
@@ -94,6 +96,32 @@ class ToolRegistryTest(unittest.TestCase):
                     "message": "recording was denied",
                 },
             },
+        )
+
+
+class ToolFactoryTest(unittest.TestCase):
+    def test_creates_only_enabled_tools(self) -> None:
+        class UnusedExecutor:
+            def execute(self, command):
+                raise AssertionError("executor should not be called")
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = create_tools(
+                ToolConfig(
+                    enabled=frozenset(
+                        {
+                            "read_file",
+                            "list_directory",
+                        }
+                    )
+                ),
+                Workspace(Path(directory)),
+                UnusedExecutor(),
+            )
+
+        self.assertEqual(
+            [tool.definition.name for tool in tools],
+            ["read_file", "list_directory"],
         )
 
 

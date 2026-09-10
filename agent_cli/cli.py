@@ -10,19 +10,15 @@ from agent_core import (
     Agent,
     AgentEvent,
     AssistantMessageEvent,
-    EditFileTool,
     JsonlSessionStore,
-    ListDirectoryTool,
-    ReadFileTool,
-    SearchFilesTool,
     Session,
     ShellApprovalPolicy,
-    ShellTool,
     SubprocessCommandExecutor,
     ToolBatchStartedEvent,
     ToolCallEvent,
     ToolResultEvent,
     Workspace,
+    create_tools,
     load_agent_config,
 )
 from agent_core.prompts import load_system_prompt
@@ -155,12 +151,10 @@ def main(argv: list[str] | None = None) -> None:
         system_prompt=load_system_prompt(workspace),
         config=agent_config,
         workspace=workspace,
-        tools=(
-            ReadFileTool(workspace),
-            EditFileTool(workspace),
-            SearchFilesTool(workspace),
-            ListDirectoryTool(workspace),
-            ShellTool(command_executor),
+        tools=create_tools(
+            agent_config.tools,
+            workspace,
+            command_executor,
         ),
         tool_policy=ShellApprovalPolicy(request_shell_permission),
     )

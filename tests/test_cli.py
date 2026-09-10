@@ -29,6 +29,7 @@ from agent_core import (
     ToolError,
     ToolResult,
     ToolResultEvent,
+    ToolConfig,
     Workspace,
 )
 
@@ -69,6 +70,17 @@ class CliArgumentsTest(unittest.TestCase):
                     return_value=AgentConfig(
                         max_same_tool_calls=5,
                         max_output_tokens=100,
+                        tools=ToolConfig(
+                            enabled=frozenset(
+                                {
+                                    "read_file",
+                                    "edit_file",
+                                    "search_files",
+                                    "list_directory",
+                                    "shell",
+                                }
+                            )
+                        ),
                     ),
                 ),
                 patch("agent_cli.cli.JsonlSessionStore"),
@@ -124,6 +136,17 @@ class CliArgumentsTest(unittest.TestCase):
                     return_value=AgentConfig(
                         max_same_tool_calls=5,
                         max_output_tokens=100,
+                        tools=ToolConfig(
+                            enabled=frozenset(
+                                {
+                                    "read_file",
+                                    "edit_file",
+                                    "search_files",
+                                    "list_directory",
+                                    "shell",
+                                }
+                            )
+                        ),
                     ),
                 ),
                 patch("agent_cli.cli.JsonlSessionStore"),

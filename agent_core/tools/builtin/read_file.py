@@ -1,5 +1,5 @@
-from .base import JSONValue, Tool, ToolDefinition
-from ..workspace import Workspace
+from ..base import JSONValue, Tool, ToolDefinition
+from ...workspace import Workspace
 
 
 DEFAULT_READ_LIMIT = 2000

@@ -18,6 +18,7 @@ from agent_core import (
     ToolCall,
     ToolCallEvent,
     ToolCallLimitExceededError,
+    ToolConfig,
     ToolDefinition,
     ToolResultEvent,
     Workspace,
@@ -30,6 +31,7 @@ RESPONSE_TIME = datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc)
 AGENT_CONFIG = AgentConfig(
     max_same_tool_calls=5,
     max_output_tokens=100,
+    tools=ToolConfig(enabled=frozenset()),
 )
 TEST_WORKSPACE = Workspace(Path(__file__).parent)
 

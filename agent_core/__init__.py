@@ -28,11 +28,14 @@ from .tools import (
     ShellTool,
     Tool,
     ToolCall,
+    ToolConfig,
     ToolDefinition,
     ToolError,
     ToolPolicy,
     ToolRegistry,
     ToolResult,
+    create_tools,
+    load_tool_config,
 )
 from .workspace import Workspace
 
@@ -65,6 +68,7 @@ __all__ = [
     "ToolCall",
     "ToolCallEvent",
     "ToolCallLimitExceededError",
+    "ToolConfig",
     "ToolDefinition",
     "ToolError",
     "ToolPolicy",
@@ -72,5 +76,7 @@ __all__ = [
     "ToolResult",
     "ToolResultEvent",
     "Workspace",
+    "create_tools",
     "load_agent_config",
+    "load_tool_config",
 ]

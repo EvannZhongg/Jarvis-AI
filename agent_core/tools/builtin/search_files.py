@@ -1,7 +1,7 @@
 import re
 
-from .base import JSONValue, Tool, ToolDefinition
-from ..workspace import Workspace
+from ..base import JSONValue, Tool, ToolDefinition
+from ...workspace import Workspace
 
 
 class SearchFilesTool(Tool):
