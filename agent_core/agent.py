@@ -2,10 +2,21 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable
 
+from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
 from .tools import Tool, ToolRegistry
+
+
+class ToolCallLimitExceededError(RuntimeError):
+    def __init__(self, tool_name: str, limit: int) -> None:
+        self.tool_name = tool_name
+        self.limit = limit
+        super().__init__(
+            f"tool '{tool_name}' exceeded the maximum of "
+            f"{limit} consecutive calls"
+        )
 
 
 @dataclass(frozen=True)
@@ -24,17 +35,21 @@ class Agent:
         provider: LLMProvider,
         session: Session,
         system_prompt: str,
+        config: AgentConfig,
         now: Callable[[], datetime] | None = None,
         tools: Iterable[Tool] = (),
     ) -> None:
         self._provider = provider
         self._session = session
         self._system_prompt = system_prompt
+        self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._tools = ToolRegistry(tools)
 
     def run(self, user_input: str) -> AgentRunResult:
         turn_start = len(self._session.items)
+        previous_tool_name: str | None = None
+        consecutive_tool_calls = 0
         request_timestamp_utc = self._now().astimezone(timezone.utc)
 
         self._session.add_item(
@@ -55,6 +70,26 @@ class Agent:
             response = self._provider.complete(request)
 
             if response.tool_calls:
+                next_tool_name = previous_tool_name
+                next_consecutive_calls = consecutive_tool_calls
+                for tool_call in response.tool_calls:
+                    if tool_call.name == next_tool_name:
+                        next_consecutive_calls += 1
+                    else:
+                        next_tool_name = tool_call.name
+                        next_consecutive_calls = 1
+
+                    if (
+                        next_consecutive_calls
+                        > self._config.max_same_tool_calls
+                    ):
+                        raise ToolCallLimitExceededError(
+                            tool_call.name,
+                            self._config.max_same_tool_calls,
+                        )
+                previous_tool_name = next_tool_name
+                consecutive_tool_calls = next_consecutive_calls
+
                 self._session.add_item(
                     role="assistant",
                     content=response.content,

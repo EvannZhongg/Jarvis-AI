@@ -17,6 +17,19 @@ cp provider_config.example.json provider_config.json
 cp .env.example .env
 ```
 
+Agent 的全局行为配置位于 `agent_config.json`：
+
+```json
+{
+  "max_same_tool_calls": 5
+}
+```
+
+`max_same_tool_calls` 表示一次 `Agent.run()` 内同一个 Tool 最多可被连续
+调用的次数。连续调用 5 次后仍再次请求同一个 Tool 时，Agent 会终止本轮
+执行并抛出 `ToolCallLimitExceededError`。中间调用其他 Tool 会重置连续
+计数，每次新的 `Agent.run()` 也会重新计数。
+
 在 `provider_config.json` 顶部通过 `provider` 选择当前使用的服务商。
 每个服务商分别配置 LiteLLM 模型名、API URL 和密钥：
 
@@ -101,8 +114,8 @@ LLMResponse(
 3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
-当前不设置 Tool Call 次数或 Agent Loop 步数限制。CLI 默认注册
-`GetCurrentTimeTool`。
+当前不设置 Agent Loop 总步数限制；同一个 Tool 在单轮中的连续调用次数
+由 `agent_config.json` 限制。CLI 默认注册 `GetCurrentTimeTool`。
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
@@ -182,6 +195,12 @@ python -m agent_cli --session SESSION_ID
 
 ```bash
 python -m agent_cli --config path/to/provider_config.json
+```
+
+指定其他 Agent 行为配置文件：
+
+```bash
+python -m agent_cli --agent-config path/to/agent_config.json
 ```
 
 ## 测试

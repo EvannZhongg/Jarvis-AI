@@ -3,7 +3,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agent_core import Agent, GetCurrentTimeTool, JsonlSessionStore, Session
+from agent_core import (
+    Agent,
+    GetCurrentTimeTool,
+    JsonlSessionStore,
+    Session,
+    load_agent_config,
+)
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
 
@@ -19,6 +25,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to the JSON model configuration.",
     )
     parser.add_argument(
+        "--agent-config",
+        type=Path,
+        default=Path("agent_config.json"),
+        help="Path to the JSON agent behavior configuration.",
+    )
+    parser.add_argument(
         "--session",
         help="Existing session id to resume. A new id is created when omitted.",
     )
@@ -31,6 +43,7 @@ def main() -> None:
 
     try:
         config = load_config(args.config)
+        agent_config = load_agent_config(args.agent_config)
     except (OSError, ValueError) as error:
         raise SystemExit(f"Failed to load config: {error}") from error
 
@@ -44,6 +57,7 @@ def main() -> None:
         ),
         session=session,
         system_prompt=load_system_prompt(),
+        config=agent_config,
         tools=(GetCurrentTimeTool(),),
     )
 

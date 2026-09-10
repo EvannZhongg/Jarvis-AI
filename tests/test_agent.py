@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from agent_core import (
     Agent,
+    AgentConfig,
     LLMProvider,
     LLMRequest,
     LLMResponse,
@@ -11,6 +12,7 @@ from agent_core import (
     Session,
     Tool,
     ToolCall,
+    ToolCallLimitExceededError,
     ToolDefinition,
 )
 
@@ -18,6 +20,7 @@ REQUEST_TIME = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
 TOOL_CALL_TIME = datetime(2026, 9, 9, 8, 0, 10, tzinfo=timezone.utc)
 TOOL_RESULT_TIME = datetime(2026, 9, 9, 8, 0, 11, tzinfo=timezone.utc)
 RESPONSE_TIME = datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc)
+AGENT_CONFIG = AgentConfig(max_same_tool_calls=5)
 
 
 class MockProvider(LLMProvider):
@@ -66,6 +69,7 @@ class AgentTest(unittest.TestCase):
             provider=provider,
             session=session,
             system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
             now=clock(REQUEST_TIME, RESPONSE_TIME),
         )
 
@@ -103,6 +107,7 @@ class AgentTest(unittest.TestCase):
             provider=provider,
             session=session,
             system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
             now=clock(
                 datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc),
                 datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc),
@@ -176,6 +181,7 @@ class AgentTest(unittest.TestCase):
             provider=provider,
             session=session,
             system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
             now=clock(
                 REQUEST_TIME,
                 TOOL_CALL_TIME,
@@ -264,6 +270,7 @@ class AgentTest(unittest.TestCase):
             provider=provider,
             session=Session(session_id="session-1"),
             system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
             now=clock(
                 REQUEST_TIME,
                 TOOL_CALL_TIME,
@@ -286,6 +293,103 @@ class AgentTest(unittest.TestCase):
                 },
             },
         )
+
+    def test_stops_on_sixth_consecutive_call_to_same_tool(self) -> None:
+        responses = [
+            LLMResponse(
+                content=None,
+                tool_calls=(
+                    ToolCall(
+                        id=f"call-{index}",
+                        name="echo",
+                        arguments={"text": "hello"},
+                    ),
+                ),
+            )
+            for index in range(1, 7)
+        ]
+        provider = MockProvider(responses)
+        session = Session(session_id="session-1")
+        timestamps = [
+            datetime(2026, 9, 9, 8, 0, index, tzinfo=timezone.utc)
+            for index in range(11)
+        ]
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            now=clock(*timestamps),
+            tools=(EchoTool(),),
+        )
+
+        with self.assertRaises(ToolCallLimitExceededError) as context:
+            agent.run("repeat the echo tool")
+
+        self.assertEqual(context.exception.tool_name, "echo")
+        self.assertEqual(context.exception.limit, 5)
+        self.assertEqual(len(provider.requests), 6)
+        self.assertEqual(
+            [item.role for item in session.items],
+            ["user", *(["assistant", "tool"] * 5)],
+        )
+
+    def test_different_tool_resets_consecutive_call_count(self) -> None:
+        provider = MockProvider(
+            [
+                LLMResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCall(
+                            id=f"echo-{index}",
+                            name="echo",
+                            arguments={"text": "hello"},
+                        ),
+                    ),
+                )
+                for index in range(1, 6)
+            ]
+            + [
+                LLMResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCall(
+                            id="missing-1",
+                            name="missing",
+                            arguments={},
+                        ),
+                    ),
+                )
+            ]
+            + [
+                LLMResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCall(
+                            id=f"echo-{index}",
+                            name="echo",
+                            arguments={"text": "hello"},
+                        ),
+                    ),
+                )
+                for index in range(6, 11)
+            ]
+            + [LLMResponse(content="done")]
+        )
+        session = Session(session_id="session-1")
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            now=lambda: REQUEST_TIME,
+            tools=(EchoTool(),),
+        )
+
+        result = agent.run("repeat echo with another tool in between")
+
+        self.assertEqual(result.response.content, "done")
+        self.assertEqual(len(provider.requests), 12)
 
 
 if __name__ == "__main__":

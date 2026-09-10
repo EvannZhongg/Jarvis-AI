@@ -1,4 +1,5 @@
-from .agent import Agent, AgentRunResult
+from .agent import Agent, AgentRunResult, ToolCallLimitExceededError
+from .config import AgentConfig, load_agent_config
 from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
 from .session import Message, Session
 from .session_store import JsonlSessionStore
@@ -15,6 +16,7 @@ from .tools import (
 
 __all__ = [
     "Agent",
+    "AgentConfig",
     "AgentRunResult",
     "JsonlSessionStore",
     "GetCurrentTimeTool",
@@ -27,8 +29,10 @@ __all__ = [
     "TokenUsage",
     "Tool",
     "ToolCall",
+    "ToolCallLimitExceededError",
     "ToolDefinition",
     "ToolError",
     "ToolRegistry",
     "ToolResult",
+    "load_agent_config",
 ]
