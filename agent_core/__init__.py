@@ -13,6 +13,7 @@ from .tools import (
     ToolRegistry,
     ToolResult,
 )
+from .workspace import Workspace
 
 __all__ = [
     "Agent",
@@ -34,5 +35,6 @@ __all__ = [
     "ToolError",
     "ToolRegistry",
     "ToolResult",
+    "Workspace",
     "load_agent_config",
 ]

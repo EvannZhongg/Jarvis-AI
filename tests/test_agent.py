@@ -1,6 +1,7 @@
 import json
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 from agent_core import (
     Agent,
@@ -14,6 +15,7 @@ from agent_core import (
     ToolCall,
     ToolCallLimitExceededError,
     ToolDefinition,
+    Workspace,
 )
 
 REQUEST_TIME = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
@@ -21,6 +23,7 @@ TOOL_CALL_TIME = datetime(2026, 9, 9, 8, 0, 10, tzinfo=timezone.utc)
 TOOL_RESULT_TIME = datetime(2026, 9, 9, 8, 0, 11, tzinfo=timezone.utc)
 RESPONSE_TIME = datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc)
 AGENT_CONFIG = AgentConfig(max_same_tool_calls=5)
+TEST_WORKSPACE = Workspace(Path(__file__).parent)
 
 
 class MockProvider(LLMProvider):
@@ -70,6 +73,7 @@ class AgentTest(unittest.TestCase):
             session=session,
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=clock(REQUEST_TIME, RESPONSE_TIME),
         )
 
@@ -80,7 +84,10 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(result.response_timestamp_utc, RESPONSE_TIME)
         self.assertEqual(result.request, provider.requests[0])
         request_messages = provider.requests[0].messages
-        self.assertEqual(provider.requests[0].system_prompt, "You are helpful.")
+        self.assertEqual(
+            provider.requests[0].system_prompt,
+            "You are helpful.",
+        )
         self.assertEqual(request_messages[0].role, "user")
         self.assertTrue(request_messages[0].content.startswith("["))
         self.assertTrue(request_messages[0].content.endswith("] hello"))
@@ -108,6 +115,7 @@ class AgentTest(unittest.TestCase):
             session=session,
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=clock(
                 datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc),
                 datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc),
@@ -121,7 +129,10 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(result.response.content, "second answer")
         self.assertEqual(result.request, provider.requests[1])
-        self.assertEqual(provider.requests[1].system_prompt, "You are helpful.")
+        self.assertEqual(
+            provider.requests[1].system_prompt,
+            "You are helpful.",
+        )
         history = provider.requests[1].messages
         self.assertEqual(
             [message.role for message in history],
@@ -182,6 +193,7 @@ class AgentTest(unittest.TestCase):
             session=session,
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=clock(
                 REQUEST_TIME,
                 TOOL_CALL_TIME,
@@ -271,6 +283,7 @@ class AgentTest(unittest.TestCase):
             session=Session(session_id="session-1"),
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=clock(
                 REQUEST_TIME,
                 TOOL_CALL_TIME,
@@ -319,6 +332,7 @@ class AgentTest(unittest.TestCase):
             session=session,
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=clock(*timestamps),
             tools=(EchoTool(),),
         )
@@ -384,6 +398,7 @@ class AgentTest(unittest.TestCase):
             session=session,
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=lambda: REQUEST_TIME,
             tools=(EchoTool(),),
         )
@@ -426,6 +441,7 @@ class AgentTest(unittest.TestCase):
             session=Session(session_id="session-1"),
             system_prompt="You are helpful.",
             config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
             now=lambda: REQUEST_TIME,
             tools=(EchoTool(),),
         )

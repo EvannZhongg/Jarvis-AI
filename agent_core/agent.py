@@ -8,6 +8,7 @@ from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
 from .tools import Tool, ToolCall, ToolRegistry
+from .workspace import Workspace
 
 
 class ToolCallLimitExceededError(RuntimeError):
@@ -37,11 +38,13 @@ class Agent:
         session: Session,
         system_prompt: str,
         config: AgentConfig,
+        workspace: Workspace,
         now: Callable[[], datetime] | None = None,
         tools: Iterable[Tool] = (),
     ) -> None:
         self._provider = provider
         self._session = session
+        self._workspace = workspace
         self._system_prompt = system_prompt
         self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))

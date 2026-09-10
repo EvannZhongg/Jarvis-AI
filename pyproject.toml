@@ -12,6 +12,9 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[project.scripts]
+jarvis = "agent_cli.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["agent_core*", "agent_cli*"]
 

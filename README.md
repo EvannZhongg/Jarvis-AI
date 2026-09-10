@@ -60,17 +60,36 @@ DEEPSEEK_KEY=your-api-key
 
 ## 启动
 
+安装后会注册 `jarvis` 命令。进入任意项目目录直接启动：
+
 ```bash
-python -m agent_cli
+cd ~/projects/my-project
+jarvis
 ```
+
+未传 `--workspace` 时，Jarvis 使用启动命令时的当前目录作为 Workspace：
+
+```text
+~/projects/my-project
+```
+
+也可以显式指定其他目录：
+
+```bash
+jarvis --workspace ~/projects/another-project
+```
+
+Workspace 会作为显式对象传入 Agent Runtime。`Soul.md` 使用
+`Current workspace: {{workspace}}` 模板显式声明 Workspace，加载 Prompt
+时替换为 `Current workspace: {{/absolute/path/to/project}}`。启动时 CLI
+也会输出解析后的绝对路径。
 
 输入 `exit` 或 `quit` 退出。
 
-每次模型请求都会将 `agent_core/prompts/Soul.md` 作为第一条
+每次模型请求都会将 `agent_core/prompts/Soul.md` 和当前 Workspace 作为
 系统指令加载到 `LLMRequest.system_prompt`。Agent Core 不决定系统指令在
 具体模型 API 中的表达方式；当前由 `LiteLLMProvider` 将其转换为 LiteLLM
-的 `system` 消息。System Prompt 保持固定，不注入当前时间，以免破坏模型
-的前缀 KV Cache。
+的 `system` 消息。System Prompt 不注入当前时间。
 
 Session 使用 `items` 保存完整执行上下文，包括：
 
@@ -190,19 +209,19 @@ Assistant [2026-09-09T16:00:00+08:00]: ...
 使用 Session ID 恢复历史对话：
 
 ```bash
-python -m agent_cli --session SESSION_ID
+jarvis --session SESSION_ID
 ```
 
 指定其他模型配置文件：
 
 ```bash
-python -m agent_cli --config path/to/provider_config.json
+jarvis --config path/to/provider_config.json
 ```
 
 指定其他 Agent 行为配置文件：
 
 ```bash
-python -m agent_cli --agent-config path/to/agent_config.json
+jarvis --agent-config path/to/agent_config.json
 ```
 
 ## 测试
