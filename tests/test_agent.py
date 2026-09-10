@@ -14,6 +14,7 @@ from agent_core import (
     Message,
     Session,
     Tool,
+    ToolBatchStartedEvent,
     ToolCall,
     ToolCallEvent,
     ToolCallLimitExceededError,
@@ -331,23 +332,36 @@ class AgentTest(unittest.TestCase):
             AssistantMessageEvent(
                 content="I'll use the echo tool.",
                 timestamp_utc=TOOL_CALL_TIME,
+                model_call_index=1,
             ),
         )
         self.assertEqual(
             events[1],
-            ToolCallEvent(tool_call),
+            ToolBatchStartedEvent(
+                model_call_index=1,
+                tool_calls=(tool_call,),
+            ),
         )
-        self.assertIsInstance(events[2], ToolResultEvent)
-        self.assertEqual(events[2].tool_result.name, "echo")
         self.assertEqual(
-            events[2].tool_result.output,
+            events[2],
+            ToolCallEvent(
+                tool_call=tool_call,
+                tool_index=1,
+                tool_count=1,
+            ),
+        )
+        self.assertIsInstance(events[3], ToolResultEvent)
+        self.assertEqual(events[3].tool_result.name, "echo")
+        self.assertEqual(
+            events[3].tool_result.output,
             {"text": "hello"},
         )
         self.assertEqual(
-            events[3],
+            events[4],
             AssistantMessageEvent(
                 content="tool completed",
                 timestamp_utc=RESPONSE_TIME,
+                model_call_index=2,
             ),
         )
 

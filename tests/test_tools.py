@@ -9,6 +9,7 @@ from agent_core import (
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ShellTool,
     Tool,
     ToolCall,
     ToolDefinition,
@@ -353,6 +354,77 @@ class SearchFilesToolTest(unittest.TestCase):
 
             with self.assertRaisesRegex(Exception, "unterminated"):
                 tool.execute({"path": ".", "pattern": "["})
+
+
+class ShellToolTest(unittest.TestCase):
+    def test_executes_command_in_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            requested_commands = []
+            tool = ShellTool(
+                workspace,
+                lambda command: requested_commands.append(command) or True,
+            )
+
+            result = tool.execute(
+                {
+                    "command": (
+                        "printf 'hello'; "
+                        "printf 'warning' >&2; "
+                        "printf \"$PWD\" > command-output.txt"
+                    )
+                }
+            )
+
+            self.assertEqual(requested_commands, [result["command"]])
+            self.assertEqual(result["exit_code"], 0)
+            self.assertEqual(result["stdout"], "hello")
+            self.assertEqual(result["stderr"], "warning")
+            self.assertEqual(
+                (workspace.path / "command-output.txt").read_text(
+                    encoding="utf-8"
+                ),
+                str(workspace.path),
+            )
+
+    def test_returns_nonzero_exit_code(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tool = ShellTool(
+                Workspace(Path(directory)),
+                lambda command: True,
+            )
+
+            result = tool.execute(
+                {"command": "printf 'failed' >&2; exit 7"}
+            )
+
+            self.assertEqual(result["exit_code"], 7)
+            self.assertEqual(result["stdout"], "")
+            self.assertEqual(result["stderr"], "failed")
+
+    def test_rejects_command_without_permission(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            tool = ShellTool(workspace, lambda command: False)
+
+            with self.assertRaisesRegex(PermissionError, "not approved"):
+                tool.execute({"command": "touch should-not-exist"})
+
+            self.assertFalse(
+                (workspace.path / "should-not-exist").exists()
+            )
+
+    def test_requires_only_command_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tool = ShellTool(
+                Workspace(Path(directory)),
+                lambda command: True,
+            )
+
+            with self.assertRaisesRegex(ValueError, "non-empty string"):
+                tool.execute({})
+            with self.assertRaisesRegex(ValueError, "accepts only"):
+                tool.execute({"command": "pwd", "extra": True})
 
 
 if __name__ == "__main__":

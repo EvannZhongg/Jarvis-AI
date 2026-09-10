@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from agent_core import (
     ReadFileTool,
     SearchFilesTool,
     Session,
+    ShellTool,
+    ToolBatchStartedEvent,
     ToolCallEvent,
     ToolResultEvent,
     Workspace,
@@ -30,17 +33,39 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "provider_config.json"
 DEFAULT_AGENT_CONFIG_PATH = PROJECT_ROOT / "agent_config.json"
 DEFAULT_SESSION_STORE_PATH = PROJECT_ROOT / "sessions.jsonl"
+TIMESTAMP_PREFIX = re.compile(
+    r"^\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s*"
+)
 
 
-def print_assistant_message(content: str, timestamp_utc: datetime) -> None:
+def print_assistant_message(
+    content: str,
+    timestamp_utc: datetime,
+    model_call_index: int,
+) -> None:
+    display_content = TIMESTAMP_PREFIX.sub("", content, count=1)
+    if not display_content:
+        return
+
     local_time = timestamp_utc.astimezone().isoformat(timespec="seconds")
-    print(f"Assistant [{local_time}]")
-    print(content)
+    print(f"\nAssistant · model call #{model_call_index} [{local_time}]")
+    print(display_content)
 
 
 def print_agent_event(event: AgentEvent) -> None:
     if isinstance(event, AssistantMessageEvent):
-        print_assistant_message(event.content, event.timestamp_utc)
+        print_assistant_message(
+            event.content,
+            event.timestamp_utc,
+            event.model_call_index,
+        )
+        return
+
+    if isinstance(event, ToolBatchStartedEvent):
+        print(
+            f"\nTools · model call #{event.model_call_index} "
+            f"· {len(event.tool_calls)} call(s)"
+        )
         return
 
     if isinstance(event, ToolCallEvent):
@@ -49,17 +74,31 @@ def print_agent_event(event: AgentEvent) -> None:
             ensure_ascii=False,
             sort_keys=True,
         )
-        print(f"→ Tool {event.tool_call.name} {arguments}")
+        print(
+            f"  [{event.tool_index}/{event.tool_count}] → "
+            f"{event.tool_call.name} {arguments}"
+        )
         return
 
     result = event.tool_result
     if result.error is None:
-        print(f"✓ Tool {result.name}")
+        print("        ✓ completed")
     else:
         print(
-            f"✗ Tool {result.name}: "
+            "        ✗ failed: "
             f"{result.error.type}: {result.error.message}"
         )
+
+
+def request_shell_permission(command: str) -> bool:
+    print("\nShell command requires approval:")
+    print(command)
+    try:
+        response = input("Allow this command? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return response.strip().lower() in {"y", "yes"}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -118,6 +157,7 @@ def main(argv: list[str] | None = None) -> None:
             EditFileTool(workspace),
             SearchFilesTool(workspace),
             ListDirectoryTool(workspace),
+            ShellTool(workspace, request_shell_permission),
         ),
     )
 

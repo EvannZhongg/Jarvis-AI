@@ -10,6 +10,7 @@ from agent_cli.cli import (
     main,
     parse_args,
     print_agent_event,
+    request_shell_permission,
 )
 from agent_cli.config import ModelConfig
 from agent_core import (
@@ -19,6 +20,8 @@ from agent_core import (
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ShellTool,
+    ToolBatchStartedEvent,
     ToolCall,
     ToolCallEvent,
     ToolError,
@@ -85,6 +88,7 @@ class CliArgumentsTest(unittest.TestCase):
             self.assertIsInstance(tools[1], EditFileTool)
             self.assertIsInstance(tools[2], SearchFilesTool)
             self.assertIsInstance(tools[3], ListDirectoryTool)
+            self.assertIsInstance(tools[4], ShellTool)
             provider_class.assert_called_once_with(
                 model="test/model",
                 base_url=None,
@@ -135,43 +139,73 @@ class CliEventRenderingTest(unittest.TestCase):
                 AssistantMessageEvent(
                     content="I'll take a look at the workspace structure.",
                     timestamp_utc=timestamp,
+                    model_call_index=1,
                 )
             )
 
         self.assertEqual(
             [call.args[0] for call in print_mock.call_args_list],
             [
-                f"Assistant [{timestamp.astimezone().isoformat(timespec='seconds')}]",
+                (
+                    "\nAssistant · model call #1 "
+                    f"[{timestamp.astimezone().isoformat(timespec='seconds')}]"
+                ),
                 "I'll take a look at the workspace structure.",
             ],
         )
 
-    def test_prints_tool_call_and_success(self) -> None:
+    def test_omits_timestamp_only_assistant_message(self) -> None:
+        timestamp = datetime(2026, 9, 10, 9, 15, 49, tzinfo=timezone.utc)
+
         with patch("builtins.print") as print_mock:
             print_agent_event(
+                AssistantMessageEvent(
+                    content="[2026-09-10T17:28:40+08:00]",
+                    timestamp_utc=timestamp,
+                    model_call_index=2,
+                )
+            )
+
+        print_mock.assert_not_called()
+
+    def test_prints_tool_call_and_success(self) -> None:
+        tool_call = ToolCall(
+            id="call-1",
+            name="read_file",
+            arguments={"path": "README.md"},
+        )
+        with patch("builtins.print") as print_mock:
+            print_agent_event(
+                ToolBatchStartedEvent(
+                    model_call_index=2,
+                    tool_calls=(tool_call,),
+                )
+            )
+            print_agent_event(
                 ToolCallEvent(
-                    ToolCall(
-                        id="call-1",
-                        name="read_file",
-                        arguments={"path": "README.md"},
-                    )
+                    tool_call=tool_call,
+                    tool_index=1,
+                    tool_count=1,
                 )
             )
             print_agent_event(
                 ToolResultEvent(
-                    ToolResult(
+                    tool_result=ToolResult(
                         tool_call_id="call-1",
                         name="read_file",
                         output={"path": "README.md", "content": "..."},
-                    )
+                    ),
+                    tool_index=1,
+                    tool_count=1,
                 )
             )
 
         self.assertEqual(
             [call.args[0] for call in print_mock.call_args_list],
             [
-                '→ Tool read_file {"path": "README.md"}',
-                "✓ Tool read_file",
+                "\nTools · model call #2 · 1 call(s)",
+                '  [1/1] → read_file {"path": "README.md"}',
+                "        ✓ completed",
             ],
         )
 
@@ -179,20 +213,42 @@ class CliEventRenderingTest(unittest.TestCase):
         with patch("builtins.print") as print_mock:
             print_agent_event(
                 ToolResultEvent(
-                    ToolResult(
+                    tool_result=ToolResult(
                         tool_call_id="call-1",
                         name="read_file",
                         error=ToolError(
                             type="ValueError",
                             message="file not found",
                         ),
-                    )
+                    ),
+                    tool_index=1,
+                    tool_count=2,
                 )
             )
 
         print_mock.assert_called_once_with(
-            "✗ Tool read_file: ValueError: file not found"
+            "        ✗ failed: ValueError: file not found"
         )
+
+
+class ShellPermissionTest(unittest.TestCase):
+    def test_approves_yes_response(self) -> None:
+        with (
+            patch("builtins.input", return_value="yes"),
+            patch("builtins.print"),
+        ):
+            approved = request_shell_permission("pwd")
+
+        self.assertTrue(approved)
+
+    def test_denies_by_default(self) -> None:
+        with (
+            patch("builtins.input", return_value=""),
+            patch("builtins.print"),
+        ):
+            approved = request_shell_permission("pwd")
+
+        self.assertFalse(approved)
 
 
 if __name__ == "__main__":

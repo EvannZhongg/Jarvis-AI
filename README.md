@@ -147,85 +147,43 @@ LLMResponse(
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
 Agent Core 会为模型的每次非空回复输出 `AssistantMessageEvent`，包括
-带 Tool Call 的中间说明；并在 Tool 开始和结束时分别输出
-`ToolCallEvent` 和 `ToolResultEvent`。CLI 使用这些结构化事件按执行顺序
-实时展示模型回复、Tool 名称、参数和执行状态，例如：
+带 Tool Call 的中间说明；每批 Tool 使用 `ToolBatchStartedEvent` 标记，
+并在单个 Tool 开始和结束时分别输出 `ToolCallEvent` 和
+`ToolResultEvent`。CLI 使用这些结构化事件按模型调用轮次分组展示回复、
+Tool 名称、参数和执行状态，例如：
 
 ```text
-Assistant [2026-09-10T16:00:00+08:00]
+Assistant · model call #1 [2026-09-10T16:00:00+08:00]
 I'll take a look at the workspace structure.
-→ Tool read_file {"path": "README.md"}
-✓ Tool read_file
-Assistant [2026-09-10T16:00:00+08:00]
+
+Tools · model call #1 · 2 call(s)
+  [1/2] → list_directory {"path": "."}
+        ✓ completed
+  [2/2] → list_directory {"path": "agent_core"}
+        ✓ completed
+
+Tools · model call #2 · 1 call(s)
+  [1/1] → read_file {"path": "README.md"}
+        ✓ completed
+
+Assistant · model call #3 [2026-09-10T16:00:02+08:00]
 README.md 已读取。
 ```
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
 执行次数由 `agent_config.json` 限制。CLI 默认注册
 `ReadFileTool`、`EditFileTool`、`SearchFilesTool` 和
-`ListDirectoryTool`。这些工具只接受 Workspace 内的相对路径；
+`ListDirectoryTool`，以及用于执行命令的 `ShellTool`。文件工具只接受
+Workspace 内的相对路径；
 `search_files` 使用 Python 正则表达式递归搜索 UTF-8 文件内容，
 `list_directory` 返回指定目录的直接子项，`edit_file` 使用 `old_text`
-和 `new_text` 对唯一匹配的文本进行替换。
+和 `new_text` 对唯一匹配的文本进行替换。`shell` 以 Workspace 为当前
+目录执行命令，并在每次执行前要求用户确认；结果包含退出码、标准输出和
+标准错误。
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
-`sessions.jsonl`：
-
-```json
-{
-  "session_id": "...",
-  "items": [
-    {
-      "role": "user",
-      "content": "读取 README.md",
-      "timestamp_utc": "2026-09-09T08:00:00Z"
-    },
-    {
-      "role": "assistant",
-      "content": null,
-      "timestamp_utc": "2026-09-09T08:00:01Z",
-      "tool_calls": [
-        {
-          "id": "call_123",
-          "name": "read_file",
-          "arguments": {
-            "path": "README.md"
-          }
-        }
-      ]
-    },
-    {
-      "role": "tool",
-      "content": "{\"ok\": true, \"output\": {\"path\": \"README.md\", \"content\": \"# Jarvis\\n...\"}}",
-      "timestamp_utc": "2026-09-09T08:00:01Z",
-      "tool_call_id": "call_123"
-    },
-    {
-      "role": "assistant",
-      "content": "README.md 已读取。",
-      "timestamp_utc": "2026-09-09T08:00:02Z"
-    }
-  ],
-  "request": {
-    "system_prompt": "You are Jarvis...",
-    "messages": [
-      {
-        "role": "user",
-        "content": "[2026-09-09T16:00:00+08:00] 读取 README.md"
-      }
-    ]
-  },
-  "response": {
-    "content": "README.md 已读取。",
-    "usage": {
-      "input_tokens": 120,
-      "output_tokens": 35,
-      "total_tokens": 155
-    }
-  }
-}
-```
+`sessions.jsonl`。
 
 文件中每行都是一个完整 JSON 对象。恢复 Session 时直接读取 `items`，
 因此 Tool Call 和 Tool Result 也会进入后续模型上下文。CLI 将最终响应的

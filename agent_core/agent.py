@@ -51,23 +51,37 @@ class AgentRunResult:
 
 
 @dataclass(frozen=True)
-class ToolCallEvent:
-    tool_call: ToolCall
-
-
-@dataclass(frozen=True)
 class AssistantMessageEvent:
     content: str
     timestamp_utc: datetime
+    model_call_index: int
+
+
+@dataclass(frozen=True)
+class ToolBatchStartedEvent:
+    model_call_index: int
+    tool_calls: tuple[ToolCall, ...]
+
+
+@dataclass(frozen=True)
+class ToolCallEvent:
+    tool_call: ToolCall
+    tool_index: int
+    tool_count: int
 
 
 @dataclass(frozen=True)
 class ToolResultEvent:
     tool_result: ToolResult
+    tool_index: int
+    tool_count: int
 
 
 AgentEvent: TypeAlias = (
-    AssistantMessageEvent | ToolCallEvent | ToolResultEvent
+    AssistantMessageEvent
+    | ToolBatchStartedEvent
+    | ToolCallEvent
+    | ToolResultEvent
 )
 
 
@@ -101,6 +115,7 @@ class Agent:
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> AgentRunResult:
         turn_start = len(self._session.items)
+        model_call_index = 0
         previous_tool_call_key: tuple[str, str] | None = None
         identical_tool_calls = 0
         request_timestamp_utc = self._now().astimezone(timezone.utc)
@@ -132,6 +147,7 @@ class Agent:
                     max_context_tokens=self._provider.max_context_tokens,
                     max_output_tokens=self._config.max_output_tokens,
                 )
+            model_call_index += 1
             response = self._provider.complete(request)
 
             if response.tool_calls:
@@ -168,14 +184,38 @@ class Agent:
                         AssistantMessageEvent(
                             content=response.content,
                             timestamp_utc=assistant_timestamp_utc,
+                            model_call_index=model_call_index,
                         )
                     )
-                for tool_call in response.tool_calls:
+                if on_event is not None:
+                    on_event(
+                        ToolBatchStartedEvent(
+                            model_call_index=model_call_index,
+                            tool_calls=response.tool_calls,
+                        )
+                    )
+                tool_count = len(response.tool_calls)
+                for tool_index, tool_call in enumerate(
+                    response.tool_calls,
+                    start=1,
+                ):
                     if on_event is not None:
-                        on_event(ToolCallEvent(tool_call))
+                        on_event(
+                            ToolCallEvent(
+                                tool_call=tool_call,
+                                tool_index=tool_index,
+                                tool_count=tool_count,
+                            )
+                        )
                     tool_result = self._tools.execute(tool_call)
                     if on_event is not None:
-                        on_event(ToolResultEvent(tool_result))
+                        on_event(
+                            ToolResultEvent(
+                                tool_result=tool_result,
+                                tool_index=tool_index,
+                                tool_count=tool_count,
+                            )
+                        )
                     self._session.add_item(
                         role="tool",
                         content=tool_result.to_content(),
@@ -200,6 +240,7 @@ class Agent:
                     AssistantMessageEvent(
                         content=response.content,
                         timestamp_utc=response_timestamp_utc,
+                        model_call_index=model_call_index,
                     )
                 )
             return AgentRunResult(
