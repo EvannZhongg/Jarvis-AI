@@ -7,3 +7,4 @@ __pycache__/
 provider_config.json
 sessions.jsonl
 CubeSandbox/
+nanobot/

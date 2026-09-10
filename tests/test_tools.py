@@ -98,11 +98,11 @@ class ToolRegistryTest(unittest.TestCase):
 
 
 class ReadFileToolTest(unittest.TestCase):
-    def test_reads_utf8_file_from_workspace(self) -> None:
+    def test_reads_utf8_file_with_line_numbers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "你好，Jarvis。\n",
+                "你好，Jarvis。\n第二行\n",
                 encoding="utf-8",
             )
 
@@ -112,8 +112,102 @@ class ReadFileToolTest(unittest.TestCase):
                 result,
                 {
                     "path": "notes.txt",
-                    "content": "你好，Jarvis。\n",
+                    "content": (
+                        "1| 你好，Jarvis。\n"
+                        "2| 第二行\n\n"
+                        "(End of file — 2 lines total)"
+                    ),
                 },
+            )
+
+    def test_reads_requested_line_range(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "\n".join(f"line {number}" for number in range(1, 6)),
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute(
+                {
+                    "path": "notes.txt",
+                    "offset": 2,
+                    "limit": 2,
+                }
+            )
+
+            self.assertEqual(
+                result,
+                {
+                    "path": "notes.txt",
+                    "content": (
+                        "2| line 2\n"
+                        "3| line 3\n\n"
+                        "(Showing lines 2-3 of 5. "
+                        "Use offset=4 to continue.)"
+                    ),
+                },
+            )
+
+    def test_defaults_to_first_2000_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "\n".join(
+                    f"line {number}" for number in range(1, 2002)
+                ),
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute({"path": "notes.txt"})
+
+            content_lines = result["content"].splitlines()
+            self.assertEqual(content_lines[0], "1| line 1")
+            self.assertEqual(content_lines[1999], "2000| line 2000")
+            self.assertEqual(
+                content_lines[-1],
+                (
+                    "(Showing lines 1-2000 of 2001. "
+                    "Use offset=2001 to continue.)"
+                ),
+            )
+
+    def test_returns_end_marker_when_offset_reaches_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "first\nsecond\nthird\n",
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute(
+                {
+                    "path": "notes.txt",
+                    "offset": 3,
+                    "limit": 10,
+                }
+            )
+
+            self.assertEqual(
+                result["content"],
+                "3| third\n\n(End of file — 3 lines total)",
+            )
+
+    def test_returns_end_marker_for_offset_past_end(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "only line\n",
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute(
+                {"path": "notes.txt", "offset": 2}
+            )
+
+            self.assertEqual(
+                result["content"],
+                "(End of file — 1 lines total)",
             )
 
     def test_rejects_path_outside_workspace(self) -> None:
@@ -142,12 +236,27 @@ class ReadFileToolTest(unittest.TestCase):
             ):
                 ReadFileTool(workspace).execute({"path": "link.txt"})
 
-    def test_requires_only_path_argument(self) -> None:
+    def test_validates_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tool = ReadFileTool(Workspace(Path(directory)))
 
             with self.assertRaisesRegex(ValueError, "non-empty string"):
                 tool.execute({})
+            with self.assertRaisesRegex(
+                ValueError,
+                "'offset' to be a positive integer",
+            ):
+                tool.execute({"path": "notes.txt", "offset": 0})
+            with self.assertRaisesRegex(
+                ValueError,
+                "'offset' to be a positive integer",
+            ):
+                tool.execute({"path": "notes.txt", "offset": True})
+            with self.assertRaisesRegex(
+                ValueError,
+                "'limit' to be a positive integer",
+            ):
+                tool.execute({"path": "notes.txt", "limit": 0})
             with self.assertRaisesRegex(ValueError, "accepts only"):
                 tool.execute({"path": "notes.txt", "extra": True})
 

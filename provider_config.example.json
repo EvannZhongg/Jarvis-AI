@@ -20,7 +20,7 @@
       "model": "deepseek/deepseek-chat",
       "url": "https://api.deepseek.com",
       "key": "${DEEPSEEK_KEY}",
-      "max_context_tokens": 131072
+      "max_context_tokens": 1048576
     },
     "openrouter": {
       "model": "openrouter/openai/gpt-5",

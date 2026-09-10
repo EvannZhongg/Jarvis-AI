@@ -49,7 +49,7 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
       "model": "deepseek/deepseek-chat",
       "url": "https://api.deepseek.com",
       "key": "${DEEPSEEK_KEY}",
-      "max_context_tokens": 131072
+      "max_context_tokens": 1048576
     }
   }
 }
@@ -144,6 +144,10 @@ CommandExecutor
 `SubprocessCommandExecutor` 负责在指定工作目录启动本地进程。后续接入
 沙箱执行后端时，不需要把进程管理逻辑重新写回 Tool。
 
+`read_file` 支持可选的 `offset` 和 `limit` 参数，默认从第 1 行开始读取
+最多 2000 行。返回内容带原始行号；文件尚未读完时会给出下一次读取使用的
+`offset`，到达末尾时会返回文件总行数。
+
 `LLMResponse` 同时支持普通文本和 Tool Call：
 
 ```python
@@ -165,30 +169,6 @@ LLMResponse(
 2. 模型返回 Tool Call 时，由 `ToolRegistry` 先执行 Policy，再调用 Tool。
 3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
-
-Agent Core 会为模型的每次非空回复输出 `AssistantMessageEvent`，包括
-带 Tool Call 的中间说明；每批 Tool 使用 `ToolBatchStartedEvent` 标记，
-并在单个 Tool 开始和结束时分别输出 `ToolCallEvent` 和
-`ToolResultEvent`。CLI 使用这些结构化事件按模型调用轮次分组展示回复、
-Tool 名称、参数和执行状态，例如：
-
-```text
-Assistant · model call #1 [2026-09-10T16:00:00+08:00]
-I'll take a look at the workspace structure.
-
-Tools · model call #1 · 2 call(s)
-  [1/2] → list_directory {"path": "."}
-        ✓ completed
-  [2/2] → list_directory {"path": "agent_core"}
-        ✓ completed
-
-Tools · model call #2 · 1 call(s)
-  [1/1] → read_file {"path": "README.md"}
-        ✓ completed
-
-Assistant · model call #3 [2026-09-10T16:00:02+08:00]
-README.md 已读取。
-```
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
 执行次数由 `agent_config.json` 限制。CLI 默认注册
