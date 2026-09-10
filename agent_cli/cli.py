@@ -5,8 +5,11 @@ from dotenv import load_dotenv
 
 from agent_core import (
     Agent,
-    GetCurrentTimeTool,
+    EditFileTool,
     JsonlSessionStore,
+    ListDirectoryTool,
+    ReadFileTool,
+    SearchFilesTool,
     Session,
     Workspace,
     load_agent_config,
@@ -73,7 +76,12 @@ def main(argv: list[str] | None = None) -> None:
         system_prompt=load_system_prompt(workspace),
         config=agent_config,
         workspace=workspace,
-        tools=(GetCurrentTimeTool(),),
+        tools=(
+            ReadFileTool(workspace),
+            EditFileTool(workspace),
+            SearchFilesTool(workspace),
+            ListDirectoryTool(workspace),
+        ),
     )
 
     print(f"Session: {session.session_id}")

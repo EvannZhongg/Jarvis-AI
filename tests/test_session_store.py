@@ -97,13 +97,13 @@ class JsonlSessionStoreTest(unittest.TestCase):
             store = JsonlSessionStore(path)
             tool_call = ToolCall(
                 id="call-1",
-                name="get_current_time",
-                arguments={},
+                name="read_file",
+                arguments={"path": "README.md"},
             )
             first_items = (
                 Message(
                     role="user",
-                    content="what time is it?",
+                    content="read README.md",
                     timestamp_utc=datetime(
                         2026, 9, 9, 8, 0, tzinfo=timezone.utc
                     ),
@@ -126,7 +126,7 @@ class JsonlSessionStoreTest(unittest.TestCase):
                 ),
                 Message(
                     role="assistant",
-                    content="It is 16:00.",
+                    content="README.md was read.",
                     timestamp_utc=datetime(
                         2026, 9, 9, 8, 1, tzinfo=timezone.utc
                     ),
@@ -155,7 +155,7 @@ class JsonlSessionStoreTest(unittest.TestCase):
                     system_prompt="Be helpful.",
                     messages=first_items[:-1],
                 ),
-                LLMResponse(content="It is 16:00."),
+                LLMResponse(content="README.md was read."),
                 first_items,
             )
             store.append_turn(

@@ -27,6 +27,32 @@ class WorkspaceTest(unittest.TestCase):
             ):
                 Workspace(missing)
 
+    def test_resolves_relative_path_within_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+
+            self.assertEqual(
+                workspace.resolve_path("nested/file.txt"),
+                workspace.path / "nested/file.txt",
+            )
+
+    def test_rejects_absolute_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+
+            with self.assertRaisesRegex(ValueError, "must be relative"):
+                workspace.resolve_path("/tmp/outside.txt")
+
+    def test_rejects_path_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "must stay within the workspace",
+            ):
+                workspace.resolve_path("../outside.txt")
+
 
 if __name__ == "__main__":
     unittest.main()

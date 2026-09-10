@@ -86,8 +86,8 @@ class LiteLLMProviderTest(unittest.TestCase):
                         "id": "call-1",
                         "type": "function",
                         "function": {
-                            "name": "get_current_time",
-                            "arguments": "{}",
+                            "name": "read_file",
+                            "arguments": '{"path": "README.md"}',
                         },
                     }
                 ],
@@ -105,11 +105,13 @@ class LiteLLMProviderTest(unittest.TestCase):
         )()
         provider = LiteLLMProvider(model="openai/test-model")
         tool = ToolDefinition(
-            name="get_current_time",
-            description="Get the current time.",
+            name="read_file",
+            description="Read a workspace file.",
             parameters={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "path": {"type": "string"},
+                },
             },
         )
 
@@ -117,15 +119,15 @@ class LiteLLMProviderTest(unittest.TestCase):
             LLMRequest(
                 system_prompt="You are helpful.",
                 messages=(
-                    Message(role="user", content="what time is it?"),
+                    Message(role="user", content="read README.md"),
                     Message(
                         role="assistant",
                         content=None,
                         tool_calls=(
                             ToolCall(
                                 id="previous-call",
-                                name="get_current_time",
-                                arguments={},
+                                name="read_file",
+                                arguments={"path": "README.md"},
                             ),
                         ),
                     ),
@@ -144,8 +146,8 @@ class LiteLLMProviderTest(unittest.TestCase):
             (
                 ToolCall(
                     id="call-1",
-                    name="get_current_time",
-                    arguments={},
+                    name="read_file",
+                    arguments={"path": "README.md"},
                 ),
             ),
         )
@@ -155,7 +157,7 @@ class LiteLLMProviderTest(unittest.TestCase):
             api_key=None,
             messages=[
                 {"role": "system", "content": "You are helpful."},
-                {"role": "user", "content": "what time is it?"},
+                {"role": "user", "content": "read README.md"},
                 {
                     "role": "assistant",
                     "content": None,
@@ -164,8 +166,8 @@ class LiteLLMProviderTest(unittest.TestCase):
                             "id": "previous-call",
                             "type": "function",
                             "function": {
-                                "name": "get_current_time",
-                                "arguments": "{}",
+                                "name": "read_file",
+                                "arguments": '{"path": "README.md"}',
                             },
                         }
                     ],
@@ -180,11 +182,13 @@ class LiteLLMProviderTest(unittest.TestCase):
                 {
                     "type": "function",
                     "function": {
-                        "name": "get_current_time",
-                        "description": "Get the current time.",
+                        "name": "read_file",
+                        "description": "Read a workspace file.",
                         "parameters": {
                             "type": "object",
-                            "properties": {},
+                            "properties": {
+                                "path": {"type": "string"},
+                            },
                         },
                     },
                 }

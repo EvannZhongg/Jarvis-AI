@@ -13,3 +13,17 @@ class Workspace:
                 f"workspace must be an existing directory: {resolved_path}"
             )
         object.__setattr__(self, "path", resolved_path)
+
+    def resolve_path(self, relative_path: str) -> Path:
+        path = Path(relative_path)
+        if path.is_absolute():
+            raise ValueError("workspace path must be relative")
+
+        resolved_path = (self.path / path).resolve()
+        try:
+            resolved_path.relative_to(self.path)
+        except ValueError as error:
+            raise ValueError(
+                "workspace path must stay within the workspace"
+            ) from error
+        return resolved_path

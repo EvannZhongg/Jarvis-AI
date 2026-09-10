@@ -133,15 +133,13 @@ class Agent:
 
 
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:
-    return (
-        tool_call.name,
-        json.dumps(
-            tool_call.arguments,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
+    normalized_arguments = json.dumps(
+        tool_call.arguments,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
     )
+    return tool_call.name, normalized_arguments
 
 
 def _format_timed_message(message: Message) -> Message:

@@ -10,7 +10,14 @@ from agent_cli.cli import (
     parse_args,
 )
 from agent_cli.config import ModelConfig
-from agent_core import AgentConfig, Workspace
+from agent_core import (
+    AgentConfig,
+    EditFileTool,
+    ListDirectoryTool,
+    ReadFileTool,
+    SearchFilesTool,
+    Workspace,
+)
 
 
 class CliArgumentsTest(unittest.TestCase):
@@ -59,6 +66,11 @@ class CliArgumentsTest(unittest.TestCase):
                 agent_class.call_args.kwargs["workspace"],
                 Workspace(Path(directory)),
             )
+            tools = agent_class.call_args.kwargs["tools"]
+            self.assertIsInstance(tools[0], ReadFileTool)
+            self.assertIsInstance(tools[1], EditFileTool)
+            self.assertIsInstance(tools[2], SearchFilesTool)
+            self.assertIsInstance(tools[3], ListDirectoryTool)
 
     def test_main_uses_explicit_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

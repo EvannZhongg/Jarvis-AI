@@ -120,8 +120,8 @@ LLMResponse(
     tool_calls=(
         ToolCall(
             id="call_123",
-            name="get_current_time",
-            arguments={},
+            name="read_file",
+            arguments={"path": "README.md"},
         ),
     ),
 )
@@ -136,7 +136,11 @@ LLMResponse(
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
 执行次数由 `agent_config.json` 限制。CLI 默认注册
-`GetCurrentTimeTool`。
+`ReadFileTool`、`EditFileTool`、`SearchFilesTool` 和
+`ListDirectoryTool`。这些工具只接受 Workspace 内的相对路径；
+`search_files` 使用 Python 正则表达式递归搜索 UTF-8 文件内容，
+`list_directory` 返回指定目录的直接子项，`edit_file` 使用 `old_text`
+和 `new_text` 对唯一匹配的文本进行替换。
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
@@ -148,7 +152,7 @@ Session Items、发送给 LLM 的完整消息上下文和最终模型响应追�
   "items": [
     {
       "role": "user",
-      "content": "现在几点？",
+      "content": "读取 README.md",
       "timestamp_utc": "2026-09-09T08:00:00Z"
     },
     {
@@ -158,20 +162,22 @@ Session Items、发送给 LLM 的完整消息上下文和最终模型响应追�
       "tool_calls": [
         {
           "id": "call_123",
-          "name": "get_current_time",
-          "arguments": {}
+          "name": "read_file",
+          "arguments": {
+            "path": "README.md"
+          }
         }
       ]
     },
     {
       "role": "tool",
-      "content": "{\"ok\": true, \"output\": {\"datetime\": \"2026-09-09T16:00:01+08:00\"}}",
+      "content": "{\"ok\": true, \"output\": {\"path\": \"README.md\", \"content\": \"# Jarvis\\n...\"}}",
       "timestamp_utc": "2026-09-09T08:00:01Z",
       "tool_call_id": "call_123"
     },
     {
       "role": "assistant",
-      "content": "现在是 16:00。",
+      "content": "README.md 已读取。",
       "timestamp_utc": "2026-09-09T08:00:02Z"
     }
   ],
@@ -180,12 +186,12 @@ Session Items、发送给 LLM 的完整消息上下文和最终模型响应追�
     "messages": [
       {
         "role": "user",
-        "content": "[2026-09-09T16:00:00+08:00] 现在几点？"
+        "content": "[2026-09-09T16:00:00+08:00] 读取 README.md"
       }
     ]
   },
   "response": {
-    "content": "现在是 16:00。",
+    "content": "README.md 已读取。",
     "usage": {
       "input_tokens": 120,
       "output_tokens": 35,
