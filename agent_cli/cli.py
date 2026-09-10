@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> None:
             model=config.model,
             base_url=config.url,
             api_key=config.key,
+            max_context_tokens=config.max_context_tokens,
         ),
         session=session,
         system_prompt=load_system_prompt(workspace),

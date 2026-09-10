@@ -1,4 +1,9 @@
-from .agent import Agent, AgentRunResult, ToolCallLimitExceededError
+from .agent import (
+    Agent,
+    AgentRunResult,
+    ContextWindowExceededError,
+    ToolCallLimitExceededError,
+)
 from .config import AgentConfig, load_agent_config
 from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
 from .session import Message, Session
@@ -22,6 +27,7 @@ __all__ = [
     "Agent",
     "AgentConfig",
     "AgentRunResult",
+    "ContextWindowExceededError",
     "EditFileTool",
     "JsonlSessionStore",
     "JSONValue",

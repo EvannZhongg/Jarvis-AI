@@ -42,6 +42,7 @@ class ConfigTest(unittest.TestCase):
                         model="deepseek/test-model",
                         url="https://example.com",
                         key="secret",
+                        max_context_tokens=None,
                     ),
                 )
 
@@ -70,6 +71,7 @@ class ConfigTest(unittest.TestCase):
                     model="openai/test-model",
                     url="https://example.com/v1",
                     key="secret",
+                    max_context_tokens=None,
                 ),
             )
 
@@ -98,8 +100,58 @@ class ConfigTest(unittest.TestCase):
                     model="openai/local-model",
                     url="http://localhost:8000/v1",
                     key="local-key",
+                    max_context_tokens=None,
                 ),
             )
+
+    def test_loads_optional_provider_context_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "provider": "test",
+                        "providers": {
+                            "test": {
+                                "model": "openai/test-model",
+                                "max_context_tokens": 128000,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                load_config(path),
+                ModelConfig(
+                    model="openai/test-model",
+                    url=None,
+                    key=None,
+                    max_context_tokens=128000,
+                ),
+            )
+
+    def test_rejects_boolean_provider_context_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "provider": "test",
+                        "providers": {
+                            "test": {
+                                "model": "openai/test-model",
+                                "max_context_tokens": True,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError):
+                load_config(path)
 
     def test_rejects_unknown_selected_provider(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

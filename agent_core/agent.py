@@ -21,6 +21,25 @@ class ToolCallLimitExceededError(RuntimeError):
         )
 
 
+class ContextWindowExceededError(RuntimeError):
+    def __init__(
+        self,
+        input_tokens: int,
+        max_context_tokens: int,
+        max_output_tokens: int,
+    ) -> None:
+        self.input_tokens = input_tokens
+        self.max_context_tokens = max_context_tokens
+        self.max_output_tokens = max_output_tokens
+        self.max_input_tokens = max_context_tokens - max_output_tokens
+        super().__init__(
+            f"input context contains {input_tokens} tokens, exceeding the "
+            f"maximum of {self.max_input_tokens} tokens "
+            f"({max_context_tokens} context tokens minus "
+            f"{max_output_tokens} reserved output tokens)"
+        )
+
+
 @dataclass(frozen=True)
 class AgentRunResult:
     request: LLMRequest
@@ -49,6 +68,11 @@ class Agent:
         self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._tools = ToolRegistry(tools)
+        if self._config.max_output_tokens >= self._provider.max_context_tokens:
+            raise ValueError(
+                "max_output_tokens must be less than the provider's "
+                "max_context_tokens"
+            )
 
     def run(self, user_input: str) -> AgentRunResult:
         turn_start = len(self._session.items)
@@ -70,7 +94,19 @@ class Agent:
                     for item in self._session.items
                 ),
                 tools=self._tools.definitions,
+                max_output_tokens=self._config.max_output_tokens,
             )
+            input_tokens = self._provider.count_input_tokens(request)
+            if (
+                input_tokens
+                > self._provider.max_context_tokens
+                - self._config.max_output_tokens
+            ):
+                raise ContextWindowExceededError(
+                    input_tokens=input_tokens,
+                    max_context_tokens=self._provider.max_context_tokens,
+                    max_output_tokens=self._config.max_output_tokens,
+                )
             response = self._provider.complete(request)
 
             if response.tool_calls:

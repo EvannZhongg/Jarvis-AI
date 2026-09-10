@@ -48,14 +48,20 @@ class CliArgumentsTest(unittest.TestCase):
                         model="test/model",
                         url=None,
                         key=None,
+                        max_context_tokens=1000,
                     ),
                 ),
                 patch(
                     "agent_cli.cli.load_agent_config",
-                    return_value=AgentConfig(max_same_tool_calls=5),
+                    return_value=AgentConfig(
+                        max_same_tool_calls=5,
+                        max_output_tokens=100,
+                    ),
                 ),
                 patch("agent_cli.cli.JsonlSessionStore"),
-                patch("agent_cli.cli.LiteLLMProvider"),
+                patch(
+                    "agent_cli.cli.LiteLLMProvider"
+                ) as provider_class,
                 patch("agent_cli.cli.Agent") as agent_class,
                 patch("builtins.input", return_value="quit"),
                 patch("builtins.print"),
@@ -71,6 +77,12 @@ class CliArgumentsTest(unittest.TestCase):
             self.assertIsInstance(tools[1], EditFileTool)
             self.assertIsInstance(tools[2], SearchFilesTool)
             self.assertIsInstance(tools[3], ListDirectoryTool)
+            provider_class.assert_called_once_with(
+                model="test/model",
+                base_url=None,
+                api_key=None,
+                max_context_tokens=1000,
+            )
 
     def test_main_uses_explicit_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -82,11 +94,15 @@ class CliArgumentsTest(unittest.TestCase):
                         model="test/model",
                         url=None,
                         key=None,
+                        max_context_tokens=None,
                     ),
                 ),
                 patch(
                     "agent_cli.cli.load_agent_config",
-                    return_value=AgentConfig(max_same_tool_calls=5),
+                    return_value=AgentConfig(
+                        max_same_tool_calls=5,
+                        max_output_tokens=100,
+                    ),
                 ),
                 patch("agent_cli.cli.JsonlSessionStore"),
                 patch("agent_cli.cli.LiteLLMProvider"),

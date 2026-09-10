@@ -10,6 +10,7 @@ class LLMRequest:
     system_prompt: str
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...] = ()
+    max_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,15 @@ class LLMResponse:
 
 
 class LLMProvider(ABC):
+    @property
+    @abstractmethod
+    def max_context_tokens(self) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def count_input_tokens(self, request: LLMRequest) -> int:
+        raise NotImplementedError
+
     @abstractmethod
     def complete(self, request: LLMRequest) -> LLMResponse:
         raise NotImplementedError

@@ -11,20 +11,33 @@ class AgentConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agent_config.json"
             path.write_text(
-                json.dumps({"max_same_tool_calls": 5}),
+                json.dumps(
+                    {
+                        "max_same_tool_calls": 5,
+                        "max_output_tokens": 100,
+                    }
+                ),
                 encoding="utf-8",
             )
 
             self.assertEqual(
                 load_agent_config(path),
-                AgentConfig(max_same_tool_calls=5),
+                AgentConfig(
+                    max_same_tool_calls=5,
+                    max_output_tokens=100,
+                ),
             )
 
     def test_rejects_non_positive_limit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agent_config.json"
             path.write_text(
-                json.dumps({"max_same_tool_calls": 0}),
+                json.dumps(
+                    {
+                        "max_same_tool_calls": 0,
+                        "max_output_tokens": 100,
+                    }
+                ),
                 encoding="utf-8",
             )
 
@@ -35,7 +48,28 @@ class AgentConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agent_config.json"
             path.write_text(
-                json.dumps({"max_same_tool_calls": True}),
+                json.dumps(
+                    {
+                        "max_same_tool_calls": True,
+                        "max_output_tokens": 100,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ValueError):
+                load_agent_config(path)
+
+    def test_rejects_non_positive_output_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agent_config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "max_same_tool_calls": 5,
+                        "max_output_tokens": 0,
+                    }
+                ),
                 encoding="utf-8",
             )
 

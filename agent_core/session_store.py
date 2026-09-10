@@ -66,6 +66,10 @@ class JsonlSessionStore:
                 }
                 for tool_call in response.tool_calls
             ]
+        if request.max_output_tokens is not None:
+            record["request"]["max_output_tokens"] = (
+                request.max_output_tokens
+            )
         if request.tools:
             record["request"]["tools"] = [
                 {

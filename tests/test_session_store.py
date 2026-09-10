@@ -24,6 +24,7 @@ class JsonlSessionStoreTest(unittest.TestCase):
             request = LLMRequest(
                 system_prompt="Be helpful.",
                 messages=(Message(role="user", content="你好"),),
+                max_output_tokens=100,
             )
             response = LLMResponse(
                 content="你好！",
@@ -77,6 +78,7 @@ class JsonlSessionStoreTest(unittest.TestCase):
                     "messages": [
                         {"role": "user", "content": "你好"},
                     ],
+                    "max_output_tokens": 100,
                 },
             )
             self.assertEqual(

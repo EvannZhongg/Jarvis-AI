@@ -21,7 +21,8 @@ Agent 的全局行为配置位于 `agent_config.json`：
 
 ```json
 {
-  "max_same_tool_calls": 5
+  "max_same_tool_calls": 5,
+  "max_output_tokens": 8192
 }
 ```
 
@@ -30,6 +31,12 @@ Agent 的全局行为配置位于 `agent_config.json`：
 ID 不参与比较。连续执行 5 次后仍再次请求相同调用时，Agent 会终止本轮
 执行并抛出 `ToolCallLimitExceededError`。Tool 名称或参数发生变化都会
 重置连续计数，每次新的 `Agent.run()` 也会重新计数。
+
+`max_output_tokens` 表示每次回答预留并传给模型的最大输出 token 数。
+每次调用模型前，Agent 都会统计完整输入（System Prompt、Session 消息和
+Tool 定义）的 token 数。输入超过模型最大上下文减去
+`max_output_tokens` 后的可用空间时，会在请求模型前抛出
+`ContextWindowExceededError`。
 
 在 `provider_config.json` 顶部通过 `provider` 选择当前使用的服务商。
 每个服务商分别配置 LiteLLM 模型名、API URL 和密钥：
@@ -41,11 +48,16 @@ ID 不参与比较。连续执行 5 次后仍再次请求相同调用时，Agent
     "deepseek": {
       "model": "deepseek/deepseek-chat",
       "url": "https://api.deepseek.com",
-      "key": "${DEEPSEEK_KEY}"
+      "key": "${DEEPSEEK_KEY}",
+      "max_context_tokens": 131072
     }
   }
 }
 ```
+
+`max_context_tokens` 是可选的模型级配置。填写时使用该值作为模型最大
+上下文；省略时通过 LiteLLM 的模型元数据读取 `max_input_tokens`。如果
+LiteLLM 没有该模型的上下文元数据，则必须显式配置该字段。
 
 `key` 支持直接填写，也支持 `${ENV_NAME}` 形式从 `.env` 读取。推荐在
 `.env` 中保存密钥，例如：

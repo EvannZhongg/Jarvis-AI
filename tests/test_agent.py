@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_core import (
     Agent,
     AgentConfig,
+    ContextWindowExceededError,
     LLMProvider,
     LLMRequest,
     LLMResponse,
@@ -22,14 +23,33 @@ REQUEST_TIME = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
 TOOL_CALL_TIME = datetime(2026, 9, 9, 8, 0, 10, tzinfo=timezone.utc)
 TOOL_RESULT_TIME = datetime(2026, 9, 9, 8, 0, 11, tzinfo=timezone.utc)
 RESPONSE_TIME = datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc)
-AGENT_CONFIG = AgentConfig(max_same_tool_calls=5)
+AGENT_CONFIG = AgentConfig(
+    max_same_tool_calls=5,
+    max_output_tokens=100,
+)
 TEST_WORKSPACE = Workspace(Path(__file__).parent)
 
 
 class MockProvider(LLMProvider):
-    def __init__(self, responses: list[str | LLMResponse]) -> None:
+    def __init__(
+        self,
+        responses: list[str | LLMResponse],
+        input_tokens: int = 1,
+        max_context_tokens: int = 1000,
+    ) -> None:
         self._responses = iter(responses)
+        self._input_tokens = input_tokens
+        self._max_context_tokens = max_context_tokens
+        self.counted_requests: list[LLMRequest] = []
         self.requests: list[LLMRequest] = []
+
+    @property
+    def max_context_tokens(self) -> int:
+        return self._max_context_tokens
+
+    def count_input_tokens(self, request: LLMRequest) -> int:
+        self.counted_requests.append(request)
+        return self._input_tokens
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         self.requests.append(request)
@@ -88,6 +108,7 @@ class AgentTest(unittest.TestCase):
             provider.requests[0].system_prompt,
             "You are helpful.",
         )
+        self.assertEqual(provider.requests[0].max_output_tokens, 100)
         self.assertEqual(request_messages[0].role, "user")
         self.assertTrue(request_messages[0].content.startswith("["))
         self.assertTrue(request_messages[0].content.endswith("] hello"))
@@ -106,6 +127,40 @@ class AgentTest(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_rejects_context_before_calling_provider(self) -> None:
+        provider = MockProvider(["unused"], input_tokens=901)
+        session = Session(session_id="session-1")
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
+            now=clock(REQUEST_TIME),
+        )
+
+        with self.assertRaises(ContextWindowExceededError) as context:
+            agent.run("hello")
+
+        self.assertEqual(context.exception.input_tokens, 901)
+        self.assertEqual(context.exception.max_context_tokens, 1000)
+        self.assertEqual(context.exception.max_output_tokens, 100)
+        self.assertEqual(context.exception.max_input_tokens, 900)
+        self.assertEqual(len(provider.counted_requests), 1)
+        self.assertEqual(provider.requests, [])
+
+    def test_rejects_output_limit_not_smaller_than_context_limit(self) -> None:
+        provider = MockProvider(["unused"], max_context_tokens=100)
+
+        with self.assertRaises(ValueError):
+            Agent(
+                provider=provider,
+                session=Session(session_id="session-1"),
+                system_prompt="You are helpful.",
+                config=AGENT_CONFIG,
+                workspace=TEST_WORKSPACE,
+            )
 
     def test_mock_provider_receives_complete_multi_turn_context(self) -> None:
         provider = MockProvider(["first answer", "second answer"])

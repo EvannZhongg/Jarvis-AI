@@ -1,6 +1,6 @@
 import json
 
-from litellm import completion
+from litellm import completion, get_model_info, token_counter
 
 from agent_core.llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
 from agent_core.session import Message
@@ -13,25 +13,52 @@ class LiteLLMProvider(LLMProvider):
         model: str,
         base_url: str | None = None,
         api_key: str | None = None,
+        max_context_tokens: int | None = None,
     ) -> None:
         self._model = model
         self._base_url = base_url
         self._api_key = api_key
+        if max_context_tokens is not None:
+            if (
+                isinstance(max_context_tokens, bool)
+                or not isinstance(max_context_tokens, int)
+                or max_context_tokens < 1
+            ):
+                raise ValueError(
+                    "max_context_tokens must be a positive integer"
+                )
+            self._max_context_tokens = max_context_tokens
+        else:
+            self._max_context_tokens = _get_model_max_context_tokens(
+                model,
+                base_url,
+            )
+
+    @property
+    def max_context_tokens(self) -> int:
+        return self._max_context_tokens
+
+    def count_input_tokens(self, request: LLMRequest) -> int:
+        messages = _request_messages(request)
+        tools = _request_tools(request)
+        return token_counter(
+            model=self._model,
+            messages=messages,
+            tools=tools or None,
+        )
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         arguments = dict(
             model=self._model,
             base_url=self._base_url,
             api_key=self._api_key,
-            messages=[
-                {"role": "system", "content": request.system_prompt},
-                *[_message_to_dict(message) for message in request.messages],
-            ],
+            messages=_request_messages(request),
         )
-        if request.tools:
-            arguments["tools"] = [
-                _tool_definition_to_dict(tool) for tool in request.tools
-            ]
+        tools = _request_tools(request)
+        if tools:
+            arguments["tools"] = tools
+        if request.max_output_tokens is not None:
+            arguments["max_tokens"] = request.max_output_tokens
 
         response = completion(**arguments)
         response_message = response.choices[0].message
@@ -52,6 +79,44 @@ class LiteLLMProvider(LLMProvider):
             if usage is not None
             else None,
         )
+
+
+def _request_messages(request: LLMRequest) -> list[dict[str, object]]:
+    return [
+        {"role": "system", "content": request.system_prompt},
+        *[_message_to_dict(message) for message in request.messages],
+    ]
+
+
+def _request_tools(request: LLMRequest) -> list[dict[str, object]]:
+    return [_tool_definition_to_dict(tool) for tool in request.tools]
+
+
+def _get_model_max_context_tokens(
+    model: str,
+    base_url: str | None,
+) -> int:
+    try:
+        model_info = get_model_info(model=model, api_base=base_url)
+    except Exception as error:
+        raise ValueError(
+            f"LiteLLM has no context limit metadata for model '{model}'; "
+            "configure 'max_context_tokens' for this provider"
+        ) from error
+
+    max_context_tokens = model_info.get("max_input_tokens")
+    if max_context_tokens is None:
+        max_context_tokens = model_info.get("max_tokens")
+    if (
+        isinstance(max_context_tokens, bool)
+        or not isinstance(max_context_tokens, int)
+        or max_context_tokens < 1
+    ):
+        raise ValueError(
+            f"LiteLLM has no context limit metadata for model '{model}'; "
+            "configure 'max_context_tokens' for this provider"
+        )
+    return max_context_tokens
 
 
 def _message_to_dict(message: Message) -> dict[str, object]:

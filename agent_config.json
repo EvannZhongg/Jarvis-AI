@@ -1,3 +1,4 @@
 {
-  "max_same_tool_calls": 5
+  "max_same_tool_calls": 5,
+  "max_output_tokens": 8192
 }

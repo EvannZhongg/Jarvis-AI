@@ -34,24 +34,34 @@ class CompletionResponse:
 
 
 class LiteLLMProviderTest(unittest.TestCase):
+    @patch("agent_core.providers.litellm_provider.token_counter")
     @patch(
         "agent_core.providers.litellm_provider.completion",
         return_value=CompletionResponse(),
     )
-    def test_passes_configured_model_url_and_key(self, completion_mock) -> None:
+    def test_passes_configured_model_url_key_and_output_limit(
+        self,
+        completion_mock,
+        token_counter_mock,
+    ) -> None:
         provider = LiteLLMProvider(
             model="openai/test-model",
             base_url="https://example.com/v1",
             api_key="secret",
+            max_context_tokens=1000,
         )
 
-        response = provider.complete(
-            LLMRequest(
-                system_prompt="You are helpful.",
-                messages=(Message(role="user", content="hello"),),
-            )
+        request = LLMRequest(
+            system_prompt="You are helpful.",
+            messages=(Message(role="user", content="hello"),),
+            max_output_tokens=100,
         )
+        token_counter_mock.return_value = 12
 
+        input_tokens = provider.count_input_tokens(request)
+        response = provider.complete(request)
+
+        self.assertEqual(input_tokens, 12)
         self.assertEqual(response.content, "response")
         self.assertEqual(
             response.usage,
@@ -61,6 +71,14 @@ class LiteLLMProviderTest(unittest.TestCase):
                 total_tokens=17,
             ),
         )
+        token_counter_mock.assert_called_once_with(
+            model="openai/test-model",
+            messages=[
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": "hello"},
+            ],
+            tools=None,
+        )
         completion_mock.assert_called_once_with(
             model="openai/test-model",
             base_url="https://example.com/v1",
@@ -69,6 +87,7 @@ class LiteLLMProviderTest(unittest.TestCase):
                 {"role": "system", "content": "You are helpful."},
                 {"role": "user", "content": "hello"},
             ],
+            max_tokens=100,
         )
 
     @patch("agent_core.providers.litellm_provider.completion")
@@ -103,7 +122,10 @@ class LiteLLMProviderTest(unittest.TestCase):
                 "usage": None,
             },
         )()
-        provider = LiteLLMProvider(model="openai/test-model")
+        provider = LiteLLMProvider(
+            model="openai/test-model",
+            max_context_tokens=1000,
+        )
         tool = ToolDefinition(
             name="read_file",
             description="Read a workspace file.",
@@ -194,6 +216,115 @@ class LiteLLMProviderTest(unittest.TestCase):
                 }
             ],
         )
+
+    @patch(
+        "agent_core.providers.litellm_provider.token_counter",
+        return_value=42,
+    )
+    def test_counts_tools_as_part_of_input(
+        self,
+        token_counter_mock,
+    ) -> None:
+        provider = LiteLLMProvider(
+            model="openai/test-model",
+            max_context_tokens=1000,
+        )
+        tool = ToolDefinition(
+            name="read_file",
+            description="Read a workspace file.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                },
+            },
+        )
+
+        count = provider.count_input_tokens(
+            LLMRequest(
+                system_prompt="You are helpful.",
+                messages=(Message(role="user", content="read it"),),
+                tools=(tool,),
+            )
+        )
+
+        self.assertEqual(count, 42)
+        token_counter_mock.assert_called_once_with(
+            model="openai/test-model",
+            messages=[
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": "read it"},
+            ],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "read_file",
+                        "description": "Read a workspace file.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                            },
+                        },
+                    },
+                }
+            ],
+        )
+
+    @patch("agent_core.providers.litellm_provider.get_model_info")
+    def test_uses_litellm_context_limit_when_not_configured(
+        self,
+        get_model_info_mock,
+    ) -> None:
+        get_model_info_mock.return_value = {
+            "max_input_tokens": 128000,
+            "max_tokens": 8192,
+        }
+
+        provider = LiteLLMProvider(
+            model="openai/test-model",
+            base_url="https://example.com/v1",
+        )
+
+        self.assertEqual(provider.max_context_tokens, 128000)
+        get_model_info_mock.assert_called_once_with(
+            model="openai/test-model",
+            api_base="https://example.com/v1",
+        )
+
+    @patch("agent_core.providers.litellm_provider.get_model_info")
+    def test_configured_context_limit_skips_litellm_metadata(
+        self,
+        get_model_info_mock,
+    ) -> None:
+        provider = LiteLLMProvider(
+            model="openai/test-model",
+            max_context_tokens=64000,
+        )
+
+        self.assertEqual(provider.max_context_tokens, 64000)
+        get_model_info_mock.assert_not_called()
+
+    def test_rejects_invalid_configured_context_limit(self) -> None:
+        with self.assertRaises(ValueError):
+            LiteLLMProvider(
+                model="openai/test-model",
+                max_context_tokens=0,
+            )
+
+    @patch("agent_core.providers.litellm_provider.get_model_info")
+    def test_requires_config_for_model_without_context_metadata(
+        self,
+        get_model_info_mock,
+    ) -> None:
+        get_model_info_mock.return_value = {
+            "max_input_tokens": None,
+            "max_tokens": None,
+        }
+
+        with self.assertRaises(ValueError):
+            LiteLLMProvider(model="custom/model")
 
 
 if __name__ == "__main__":

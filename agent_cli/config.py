@@ -9,6 +9,7 @@ class ModelConfig:
     model: str
     url: str | None
     key: str | None
+    max_context_tokens: int | None = None
 
 
 def load_config(path: Path) -> ModelConfig:
@@ -35,6 +36,11 @@ def load_config(path: Path) -> ModelConfig:
 
     url = _optional_string(selected, "url", provider)
     key = _optional_string(selected, "key", provider)
+    max_context_tokens = _optional_positive_integer(
+        selected,
+        "max_context_tokens",
+        provider,
+    )
     if key and key.startswith("${") and key.endswith("}"):
         key_env = key[2:-1]
         if not key_env:
@@ -49,7 +55,12 @@ def load_config(path: Path) -> ModelConfig:
                 f"for provider '{provider}'"
             )
 
-    return ModelConfig(model=model.strip(), url=url, key=key)
+    return ModelConfig(
+        model=model.strip(),
+        url=url,
+        key=key,
+        max_context_tokens=max_context_tokens,
+    )
 
 
 def _optional_string(
@@ -65,3 +76,18 @@ def _optional_string(
             f"provider '{provider}' field '{field}' must be a non-empty string"
         )
     return value.strip()
+
+
+def _optional_positive_integer(
+    data: dict[str, object],
+    field: str,
+    provider: str,
+) -> int | None:
+    value = data.get(field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f"provider '{provider}' field '{field}' must be a positive integer"
+        )
+    return value
