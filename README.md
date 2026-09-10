@@ -122,7 +122,27 @@ Session 使用 `items` 保存完整执行上下文，包括：
 
 Tool 能力位于独立的 `agent_core/tools/`。每个 Tool 提供模型可见的
 `ToolDefinition`，并通过统一的 `execute(arguments)` 接口执行。
-`ToolRegistry` 负责按名称注册和调用 Tool。
+`ToolRegistry` 负责按名称注册和调度 Tool，并在 Tool 执行前调用注入的
+Policy。当前仅提供 `ShellApprovalPolicy` 处理 shell 人工确认，没有引入
+完整的 Policy Engine。
+
+shell 的进程执行已从 `ShellTool` 抽离到 `CommandExecutor`：
+
+```text
+Agent
+  ↓
+ToolRegistry
+  ↓
+ToolPolicy
+  ↓
+ShellTool
+  ↓
+CommandExecutor
+```
+
+`ShellTool` 只负责参数校验和结果结构化，默认的
+`SubprocessCommandExecutor` 负责在指定工作目录启动本地进程。后续接入
+沙箱执行后端时，不需要把进程管理逻辑重新写回 Tool。
 
 `LLMResponse` 同时支持普通文本和 Tool Call：
 
@@ -142,7 +162,7 @@ LLMResponse(
 `Agent.run()` 会显式执行以下循环：
 
 1. 将注册 Tool 的定义随 `LLMRequest` 发送给模型。
-2. 模型返回 Tool Call 时，由 `ToolRegistry` 执行。
+2. 模型返回 Tool Call 时，由 `ToolRegistry` 先执行 Policy，再调用 Tool。
 3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 

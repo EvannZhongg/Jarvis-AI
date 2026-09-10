@@ -10,6 +10,11 @@ from .agent import (
     ToolResultEvent,
 )
 from .config import AgentConfig, load_agent_config
+from .execution import (
+    CommandExecutionResult,
+    CommandExecutor,
+    SubprocessCommandExecutor,
+)
 from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
 from .session import Message, Session
 from .session_store import JsonlSessionStore
@@ -19,11 +24,13 @@ from .tools import (
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ShellApprovalPolicy,
     ShellTool,
     Tool,
     ToolCall,
     ToolDefinition,
     ToolError,
+    ToolPolicy,
     ToolRegistry,
     ToolResult,
 )
@@ -36,6 +43,8 @@ __all__ = [
     "AgentRunResult",
     "AssistantMessageEvent",
     "ContextWindowExceededError",
+    "CommandExecutionResult",
+    "CommandExecutor",
     "EditFileTool",
     "JsonlSessionStore",
     "JSONValue",
@@ -46,8 +55,10 @@ __all__ = [
     "Message",
     "ReadFileTool",
     "SearchFilesTool",
+    "ShellApprovalPolicy",
     "Session",
     "ShellTool",
+    "SubprocessCommandExecutor",
     "TokenUsage",
     "Tool",
     "ToolBatchStartedEvent",
@@ -56,6 +67,7 @@ __all__ = [
     "ToolCallLimitExceededError",
     "ToolDefinition",
     "ToolError",
+    "ToolPolicy",
     "ToolRegistry",
     "ToolResult",
     "ToolResultEvent",

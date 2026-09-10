@@ -7,7 +7,7 @@ from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
-from .tools import Tool, ToolCall, ToolRegistry, ToolResult
+from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
 from .workspace import Workspace
 
 
@@ -95,6 +95,7 @@ class Agent:
         workspace: Workspace,
         now: Callable[[], datetime] | None = None,
         tools: Iterable[Tool] = (),
+        tool_policy: ToolPolicy | None = None,
     ) -> None:
         self._provider = provider
         self._session = session
@@ -102,7 +103,7 @@ class Agent:
         self._system_prompt = system_prompt
         self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
-        self._tools = ToolRegistry(tools)
+        self._tools = ToolRegistry(tools, policy=tool_policy)
         if self._config.max_output_tokens >= self._provider.max_context_tokens:
             raise ValueError(
                 "max_output_tokens must be less than the provider's "

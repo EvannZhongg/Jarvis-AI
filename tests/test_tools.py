@@ -5,10 +5,12 @@ import tempfile
 from pathlib import Path
 
 from agent_core import (
+    CommandExecutionResult,
     EditFileTool,
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ShellApprovalPolicy,
     ShellTool,
     Tool,
     ToolCall,
@@ -53,6 +55,46 @@ class ToolRegistryTest(unittest.TestCase):
     def test_rejects_duplicate_tool_names(self) -> None:
         with self.assertRaisesRegex(ValueError, "already registered"):
             ToolRegistry((FailingTool(), FailingTool()))
+
+    def test_returns_structured_policy_error_before_tool_execution(
+        self,
+    ) -> None:
+        executed = []
+
+        class RecordingTool(Tool):
+            @property
+            def definition(self) -> ToolDefinition:
+                return ToolDefinition(
+                    name="recording",
+                    description="Record execution.",
+                    parameters={"type": "object", "properties": {}},
+                )
+
+            def execute(self, arguments):
+                executed.append(arguments)
+                return None
+
+        class DenyPolicy:
+            def authorize(self, call):
+                raise PermissionError(f"{call.name} was denied")
+
+        registry = ToolRegistry((RecordingTool(),), policy=DenyPolicy())
+
+        result = registry.execute(
+            ToolCall(id="call-1", name="recording", arguments={})
+        )
+
+        self.assertEqual(executed, [])
+        self.assertEqual(
+            json.loads(result.to_content()),
+            {
+                "ok": False,
+                "error": {
+                    "type": "PermissionError",
+                    "message": "recording was denied",
+                },
+            },
+        )
 
 
 class ReadFileToolTest(unittest.TestCase):
@@ -357,74 +399,93 @@ class SearchFilesToolTest(unittest.TestCase):
 
 
 class ShellToolTest(unittest.TestCase):
-    def test_executes_command_in_workspace(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            workspace = Workspace(Path(directory))
-            requested_commands = []
-            tool = ShellTool(
-                workspace,
-                lambda command: requested_commands.append(command) or True,
-            )
+    def test_delegates_command_to_executor(self) -> None:
+        class RecordingExecutor:
+            def __init__(self) -> None:
+                self.commands = []
 
-            result = tool.execute(
-                {
-                    "command": (
-                        "printf 'hello'; "
-                        "printf 'warning' >&2; "
-                        "printf \"$PWD\" > command-output.txt"
-                    )
-                }
-            )
+            def execute(self, command):
+                self.commands.append(command)
+                return CommandExecutionResult(
+                    command=command,
+                    exit_code=7,
+                    stdout="output",
+                    stderr="warning",
+                )
 
-            self.assertEqual(requested_commands, [result["command"]])
-            self.assertEqual(result["exit_code"], 0)
-            self.assertEqual(result["stdout"], "hello")
-            self.assertEqual(result["stderr"], "warning")
-            self.assertEqual(
-                (workspace.path / "command-output.txt").read_text(
-                    encoding="utf-8"
-                ),
-                str(workspace.path),
-            )
+        executor = RecordingExecutor()
+        tool = ShellTool(executor)
 
-    def test_returns_nonzero_exit_code(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            tool = ShellTool(
-                Workspace(Path(directory)),
-                lambda command: True,
-            )
+        result = tool.execute({"command": "example command"})
 
-            result = tool.execute(
-                {"command": "printf 'failed' >&2; exit 7"}
-            )
-
-            self.assertEqual(result["exit_code"], 7)
-            self.assertEqual(result["stdout"], "")
-            self.assertEqual(result["stderr"], "failed")
-
-    def test_rejects_command_without_permission(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            workspace = Workspace(Path(directory))
-            tool = ShellTool(workspace, lambda command: False)
-
-            with self.assertRaisesRegex(PermissionError, "not approved"):
-                tool.execute({"command": "touch should-not-exist"})
-
-            self.assertFalse(
-                (workspace.path / "should-not-exist").exists()
-            )
+        self.assertEqual(executor.commands, ["example command"])
+        self.assertEqual(
+            result,
+            {
+                "command": "example command",
+                "exit_code": 7,
+                "stdout": "output",
+                "stderr": "warning",
+            },
+        )
 
     def test_requires_only_command_argument(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            tool = ShellTool(
-                Workspace(Path(directory)),
-                lambda command: True,
+        class UnusedExecutor:
+            def execute(self, command):
+                raise AssertionError("executor should not be called")
+
+        tool = ShellTool(UnusedExecutor())
+
+        with self.assertRaisesRegex(ValueError, "non-empty string"):
+            tool.execute({})
+        with self.assertRaisesRegex(ValueError, "accepts only"):
+            tool.execute({"command": "pwd", "extra": True})
+
+
+class ShellApprovalPolicyTest(unittest.TestCase):
+    def test_requests_approval_for_shell_command(self) -> None:
+        requested_commands = []
+        policy = ShellApprovalPolicy(
+            lambda command: requested_commands.append(command) or True
+        )
+
+        policy.authorize(
+            ToolCall(
+                id="call-1",
+                name="shell",
+                arguments={"command": "pwd"},
+            )
+        )
+
+        self.assertEqual(requested_commands, ["pwd"])
+
+    def test_rejects_shell_command_without_approval(self) -> None:
+        policy = ShellApprovalPolicy(lambda command: False)
+
+        with self.assertRaisesRegex(PermissionError, "not approved"):
+            policy.authorize(
+                ToolCall(
+                    id="call-1",
+                    name="shell",
+                    arguments={"command": "pwd"},
+                )
             )
 
-            with self.assertRaisesRegex(ValueError, "non-empty string"):
-                tool.execute({})
-            with self.assertRaisesRegex(ValueError, "accepts only"):
-                tool.execute({"command": "pwd", "extra": True})
+    def test_ignores_other_tools(self) -> None:
+        requested_commands = []
+        policy = ShellApprovalPolicy(
+            lambda command: requested_commands.append(command) or False
+        )
+
+        policy.authorize(
+            ToolCall(
+                id="call-1",
+                name="read_file",
+                arguments={"path": "README.md"},
+            )
+        )
+
+        self.assertEqual(requested_commands, [])
 
 
 if __name__ == "__main__":

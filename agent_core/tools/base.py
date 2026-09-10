@@ -1,7 +1,7 @@
 import json
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass
-from typing import Iterable, TypeAlias
+from typing import Iterable, Protocol, TypeAlias
 
 
 JSONValue: TypeAlias = (
@@ -67,9 +67,19 @@ class Tool(ABC):
         raise NotImplementedError
 
 
+class ToolPolicy(Protocol):
+    def authorize(self, call: ToolCall) -> None:
+        raise NotImplementedError
+
+
 class ToolRegistry:
-    def __init__(self, tools: Iterable[Tool] = ()) -> None:
+    def __init__(
+        self,
+        tools: Iterable[Tool] = (),
+        policy: ToolPolicy | None = None,
+    ) -> None:
         self._tools: dict[str, Tool] = {}
+        self._policy = policy
         for tool in tools:
             name = tool.definition.name
             if name in self._tools:
@@ -93,6 +103,8 @@ class ToolRegistry:
             )
 
         try:
+            if self._policy is not None:
+                self._policy.authorize(call)
             output = tool.execute(call.arguments)
         except Exception as error:
             return ToolResult(

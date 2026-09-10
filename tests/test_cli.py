@@ -20,7 +20,9 @@ from agent_core import (
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ShellApprovalPolicy,
     ShellTool,
+    SubprocessCommandExecutor,
     ToolBatchStartedEvent,
     ToolCall,
     ToolCallEvent,
@@ -89,6 +91,14 @@ class CliArgumentsTest(unittest.TestCase):
             self.assertIsInstance(tools[2], SearchFilesTool)
             self.assertIsInstance(tools[3], ListDirectoryTool)
             self.assertIsInstance(tools[4], ShellTool)
+            self.assertIsInstance(
+                tools[4]._executor,
+                SubprocessCommandExecutor,
+            )
+            self.assertIsInstance(
+                agent_class.call_args.kwargs["tool_policy"],
+                ShellApprovalPolicy,
+            )
             provider_class.assert_called_once_with(
                 model="test/model",
                 base_url=None,

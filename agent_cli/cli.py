@@ -16,7 +16,9 @@ from agent_core import (
     ReadFileTool,
     SearchFilesTool,
     Session,
+    ShellApprovalPolicy,
     ShellTool,
+    SubprocessCommandExecutor,
     ToolBatchStartedEvent,
     ToolCallEvent,
     ToolResultEvent,
@@ -141,6 +143,7 @@ def main(argv: list[str] | None = None) -> None:
 
     store = JsonlSessionStore(DEFAULT_SESSION_STORE_PATH)
     session = store.load(args.session) if args.session else Session()
+    command_executor = SubprocessCommandExecutor(workspace.path)
     agent = Agent(
         provider=LiteLLMProvider(
             model=config.model,
@@ -157,8 +160,9 @@ def main(argv: list[str] | None = None) -> None:
             EditFileTool(workspace),
             SearchFilesTool(workspace),
             ListDirectoryTool(workspace),
-            ShellTool(workspace, request_shell_permission),
+            ShellTool(command_executor),
         ),
+        tool_policy=ShellApprovalPolicy(request_shell_permission),
     )
 
     print(f"Session: {session.session_id}")
