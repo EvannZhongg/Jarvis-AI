@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable
@@ -6,7 +7,7 @@ from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
-from .tools import Tool, ToolRegistry
+from .tools import Tool, ToolCall, ToolRegistry
 
 
 class ToolCallLimitExceededError(RuntimeError):
@@ -14,8 +15,8 @@ class ToolCallLimitExceededError(RuntimeError):
         self.tool_name = tool_name
         self.limit = limit
         super().__init__(
-            f"tool '{tool_name}' exceeded the maximum of "
-            f"{limit} consecutive calls"
+            f"tool call '{tool_name}' exceeded the maximum of "
+            f"{limit} identical consecutive executions"
         )
 
 
@@ -48,8 +49,8 @@ class Agent:
 
     def run(self, user_input: str) -> AgentRunResult:
         turn_start = len(self._session.items)
-        previous_tool_name: str | None = None
-        consecutive_tool_calls = 0
+        previous_tool_call_key: tuple[str, str] | None = None
+        identical_tool_calls = 0
         request_timestamp_utc = self._now().astimezone(timezone.utc)
 
         self._session.add_item(
@@ -70,25 +71,26 @@ class Agent:
             response = self._provider.complete(request)
 
             if response.tool_calls:
-                next_tool_name = previous_tool_name
-                next_consecutive_calls = consecutive_tool_calls
+                next_tool_call_key = previous_tool_call_key
+                next_identical_calls = identical_tool_calls
                 for tool_call in response.tool_calls:
-                    if tool_call.name == next_tool_name:
-                        next_consecutive_calls += 1
+                    tool_call_key = _tool_call_key(tool_call)
+                    if tool_call_key == next_tool_call_key:
+                        next_identical_calls += 1
                     else:
-                        next_tool_name = tool_call.name
-                        next_consecutive_calls = 1
+                        next_tool_call_key = tool_call_key
+                        next_identical_calls = 1
 
                     if (
-                        next_consecutive_calls
+                        next_identical_calls
                         > self._config.max_same_tool_calls
                     ):
                         raise ToolCallLimitExceededError(
                             tool_call.name,
                             self._config.max_same_tool_calls,
                         )
-                previous_tool_name = next_tool_name
-                consecutive_tool_calls = next_consecutive_calls
+                previous_tool_call_key = next_tool_call_key
+                identical_tool_calls = next_identical_calls
 
                 self._session.add_item(
                     role="assistant",
@@ -125,6 +127,18 @@ class Agent:
                 request_timestamp_utc=request_timestamp_utc,
                 response_timestamp_utc=response_timestamp_utc,
             )
+
+
+def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:
+    return (
+        tool_call.name,
+        json.dumps(
+            tool_call.arguments,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    )
 
 
 def _format_timed_message(message: Message) -> Message:

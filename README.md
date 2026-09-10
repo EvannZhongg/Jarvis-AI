@@ -25,10 +25,11 @@ Agent 的全局行为配置位于 `agent_config.json`：
 }
 ```
 
-`max_same_tool_calls` 表示一次 `Agent.run()` 内同一个 Tool 最多可被连续
-调用的次数。连续调用 5 次后仍再次请求同一个 Tool 时，Agent 会终止本轮
-执行并抛出 `ToolCallLimitExceededError`。中间调用其他 Tool 会重置连续
-计数，每次新的 `Agent.run()` 也会重新计数。
+`max_same_tool_calls` 表示一次 `Agent.run()` 内完全相同的 Tool Call
+最多可被连续执行的次数。Tool 名称和参数都相同才视为相同调用，Tool Call
+ID 不参与比较。连续执行 5 次后仍再次请求相同调用时，Agent 会终止本轮
+执行并抛出 `ToolCallLimitExceededError`。Tool 名称或参数发生变化都会
+重置连续计数，每次新的 `Agent.run()` 也会重新计数。
 
 在 `provider_config.json` 顶部通过 `provider` 选择当前使用的服务商。
 每个服务商分别配置 LiteLLM 模型名、API URL 和密钥：
@@ -114,8 +115,9 @@ LLMResponse(
 3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
-当前不设置 Agent Loop 总步数限制；同一个 Tool 在单轮中的连续调用次数
-由 `agent_config.json` 限制。CLI 默认注册 `GetCurrentTimeTool`。
+当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
+执行次数由 `agent_config.json` 限制。CLI 默认注册
+`GetCurrentTimeTool`。
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到

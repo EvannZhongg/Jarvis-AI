@@ -294,7 +294,7 @@ class AgentTest(unittest.TestCase):
             },
         )
 
-    def test_stops_on_sixth_consecutive_call_to_same_tool(self) -> None:
+    def test_stops_on_sixth_identical_tool_call(self) -> None:
         responses = [
             LLMResponse(
                 content=None,
@@ -334,7 +334,9 @@ class AgentTest(unittest.TestCase):
             ["user", *(["assistant", "tool"] * 5)],
         )
 
-    def test_different_tool_resets_consecutive_call_count(self) -> None:
+    def test_same_tool_with_different_arguments_resets_repeat_count(
+        self,
+    ) -> None:
         provider = MockProvider(
             [
                 LLMResponse(
@@ -343,7 +345,7 @@ class AgentTest(unittest.TestCase):
                         ToolCall(
                             id=f"echo-{index}",
                             name="echo",
-                            arguments={"text": "hello"},
+                            arguments={"text": "first"},
                         ),
                     ),
                 )
@@ -354,9 +356,9 @@ class AgentTest(unittest.TestCase):
                     content=None,
                     tool_calls=(
                         ToolCall(
-                            id="missing-1",
-                            name="missing",
-                            arguments={},
+                            id="echo-different",
+                            name="echo",
+                            arguments={"text": "different"},
                         ),
                     ),
                 )
@@ -368,7 +370,7 @@ class AgentTest(unittest.TestCase):
                         ToolCall(
                             id=f"echo-{index}",
                             name="echo",
-                            arguments={"text": "hello"},
+                            arguments={"text": "first"},
                         ),
                     ),
                 )
@@ -386,10 +388,50 @@ class AgentTest(unittest.TestCase):
             tools=(EchoTool(),),
         )
 
-        result = agent.run("repeat echo with another tool in between")
+        result = agent.run("repeat echo with different arguments in between")
 
         self.assertEqual(result.response.content, "done")
         self.assertEqual(len(provider.requests), 12)
+
+    def test_argument_object_key_order_does_not_reset_repeat_count(
+        self,
+    ) -> None:
+        provider = MockProvider(
+            [
+                LLMResponse(
+                    content=None,
+                    tool_calls=(
+                        ToolCall(
+                            id=f"call-{index}",
+                            name="echo",
+                            arguments=arguments,
+                        ),
+                    ),
+                )
+                for index, arguments in enumerate(
+                    [
+                        {"text": "hello", "extra": 1},
+                        {"extra": 1, "text": "hello"},
+                        {"text": "hello", "extra": 1},
+                        {"extra": 1, "text": "hello"},
+                        {"text": "hello", "extra": 1},
+                        {"extra": 1, "text": "hello"},
+                    ],
+                    start=1,
+                )
+            ]
+        )
+        agent = Agent(
+            provider=provider,
+            session=Session(session_id="session-1"),
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            now=lambda: REQUEST_TIME,
+            tools=(EchoTool(),),
+        )
+
+        with self.assertRaises(ToolCallLimitExceededError):
+            agent.run("repeat the exact same call")
 
 
 if __name__ == "__main__":
