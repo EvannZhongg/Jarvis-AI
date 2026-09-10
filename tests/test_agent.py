@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_core import (
     Agent,
     AgentConfig,
+    AssistantMessageEvent,
     ContextWindowExceededError,
     LLMProvider,
     LLMRequest,
@@ -14,8 +15,10 @@ from agent_core import (
     Session,
     Tool,
     ToolCall,
+    ToolCallEvent,
     ToolCallLimitExceededError,
     ToolDefinition,
+    ToolResultEvent,
     Workspace,
 )
 
@@ -238,7 +241,10 @@ class AgentTest(unittest.TestCase):
         )
         provider = MockProvider(
             [
-                LLMResponse(content=None, tool_calls=(tool_call,)),
+                LLMResponse(
+                    content="I'll use the echo tool.",
+                    tool_calls=(tool_call,),
+                ),
                 LLMResponse(content="tool completed"),
             ]
         )
@@ -257,8 +263,9 @@ class AgentTest(unittest.TestCase):
             ),
             tools=(EchoTool(),),
         )
+        events = []
 
-        result = agent.run("use the echo tool")
+        result = agent.run("use the echo tool", on_event=events.append)
 
         self.assertEqual(result.response.content, "tool completed")
         self.assertEqual(len(provider.requests), 2)
@@ -276,7 +283,10 @@ class AgentTest(unittest.TestCase):
             second_request_messages[1],
             Message(
                 role="assistant",
-                content=None,
+                content=(
+                    "[2026-09-09T16:00:10+08:00] "
+                    "I'll use the echo tool."
+                ),
                 tool_calls=(tool_call,),
             ),
         )
@@ -298,7 +308,7 @@ class AgentTest(unittest.TestCase):
                 ),
                 Message(
                     role="assistant",
-                    content=None,
+                    content="I'll use the echo tool.",
                     timestamp_utc=TOOL_CALL_TIME,
                     tool_calls=(tool_call,),
                 ),
@@ -316,6 +326,30 @@ class AgentTest(unittest.TestCase):
             ],
         )
         self.assertEqual(result.items, tuple(session.items))
+        self.assertEqual(
+            events[0],
+            AssistantMessageEvent(
+                content="I'll use the echo tool.",
+                timestamp_utc=TOOL_CALL_TIME,
+            ),
+        )
+        self.assertEqual(
+            events[1],
+            ToolCallEvent(tool_call),
+        )
+        self.assertIsInstance(events[2], ToolResultEvent)
+        self.assertEqual(events[2].tool_result.name, "echo")
+        self.assertEqual(
+            events[2].tool_result.output,
+            {"text": "hello"},
+        )
+        self.assertEqual(
+            events[3],
+            AssistantMessageEvent(
+                content="tool completed",
+                timestamp_utc=RESPONSE_TIME,
+            ),
+        )
 
     def test_returns_unknown_tool_error_to_model(self) -> None:
         provider = MockProvider(

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,14 +9,21 @@ from agent_cli.cli import (
     DEFAULT_CONFIG_PATH,
     main,
     parse_args,
+    print_agent_event,
 )
 from agent_cli.config import ModelConfig
 from agent_core import (
     AgentConfig,
+    AssistantMessageEvent,
     EditFileTool,
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
+    ToolCall,
+    ToolCallEvent,
+    ToolError,
+    ToolResult,
+    ToolResultEvent,
     Workspace,
 )
 
@@ -116,6 +124,75 @@ class CliArgumentsTest(unittest.TestCase):
                 agent_class.call_args.kwargs["workspace"],
                 Workspace(Path(directory)),
             )
+
+
+class CliEventRenderingTest(unittest.TestCase):
+    def test_prints_intermediate_assistant_message(self) -> None:
+        timestamp = datetime(2026, 9, 10, 9, 15, 49, tzinfo=timezone.utc)
+
+        with patch("builtins.print") as print_mock:
+            print_agent_event(
+                AssistantMessageEvent(
+                    content="I'll take a look at the workspace structure.",
+                    timestamp_utc=timestamp,
+                )
+            )
+
+        self.assertEqual(
+            [call.args[0] for call in print_mock.call_args_list],
+            [
+                f"Assistant [{timestamp.astimezone().isoformat(timespec='seconds')}]",
+                "I'll take a look at the workspace structure.",
+            ],
+        )
+
+    def test_prints_tool_call_and_success(self) -> None:
+        with patch("builtins.print") as print_mock:
+            print_agent_event(
+                ToolCallEvent(
+                    ToolCall(
+                        id="call-1",
+                        name="read_file",
+                        arguments={"path": "README.md"},
+                    )
+                )
+            )
+            print_agent_event(
+                ToolResultEvent(
+                    ToolResult(
+                        tool_call_id="call-1",
+                        name="read_file",
+                        output={"path": "README.md", "content": "..."},
+                    )
+                )
+            )
+
+        self.assertEqual(
+            [call.args[0] for call in print_mock.call_args_list],
+            [
+                '→ Tool read_file {"path": "README.md"}',
+                "✓ Tool read_file",
+            ],
+        )
+
+    def test_prints_tool_error(self) -> None:
+        with patch("builtins.print") as print_mock:
+            print_agent_event(
+                ToolResultEvent(
+                    ToolResult(
+                        tool_call_id="call-1",
+                        name="read_file",
+                        error=ToolError(
+                            type="ValueError",
+                            message="file not found",
+                        ),
+                    )
+                )
+            )
+
+        print_mock.assert_called_once_with(
+            "✗ Tool read_file: ValueError: file not found"
+        )
 
 
 if __name__ == "__main__":

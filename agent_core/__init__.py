@@ -1,8 +1,12 @@
 from .agent import (
     Agent,
+    AgentEvent,
     AgentRunResult,
+    AssistantMessageEvent,
     ContextWindowExceededError,
+    ToolCallEvent,
     ToolCallLimitExceededError,
+    ToolResultEvent,
 )
 from .config import AgentConfig, load_agent_config
 from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
@@ -26,7 +30,9 @@ from .workspace import Workspace
 __all__ = [
     "Agent",
     "AgentConfig",
+    "AgentEvent",
     "AgentRunResult",
+    "AssistantMessageEvent",
     "ContextWindowExceededError",
     "EditFileTool",
     "JsonlSessionStore",
@@ -42,11 +48,13 @@ __all__ = [
     "TokenUsage",
     "Tool",
     "ToolCall",
+    "ToolCallEvent",
     "ToolCallLimitExceededError",
     "ToolDefinition",
     "ToolError",
     "ToolRegistry",
     "ToolResult",
+    "ToolResultEvent",
     "Workspace",
     "load_agent_config",
 ]

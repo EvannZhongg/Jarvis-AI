@@ -1,16 +1,22 @@
 import argparse
+import json
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from agent_core import (
     Agent,
+    AgentEvent,
+    AssistantMessageEvent,
     EditFileTool,
     JsonlSessionStore,
     ListDirectoryTool,
     ReadFileTool,
     SearchFilesTool,
     Session,
+    ToolCallEvent,
+    ToolResultEvent,
     Workspace,
     load_agent_config,
 )
@@ -24,6 +30,36 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "provider_config.json"
 DEFAULT_AGENT_CONFIG_PATH = PROJECT_ROOT / "agent_config.json"
 DEFAULT_SESSION_STORE_PATH = PROJECT_ROOT / "sessions.jsonl"
+
+
+def print_assistant_message(content: str, timestamp_utc: datetime) -> None:
+    local_time = timestamp_utc.astimezone().isoformat(timespec="seconds")
+    print(f"Assistant [{local_time}]")
+    print(content)
+
+
+def print_agent_event(event: AgentEvent) -> None:
+    if isinstance(event, AssistantMessageEvent):
+        print_assistant_message(event.content, event.timestamp_utc)
+        return
+
+    if isinstance(event, ToolCallEvent):
+        arguments = json.dumps(
+            event.tool_call.arguments,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        print(f"→ Tool {event.tool_call.name} {arguments}")
+        return
+
+    result = event.tool_result
+    if result.error is None:
+        print(f"✓ Tool {result.name}")
+    else:
+        print(
+            f"✗ Tool {result.name}: "
+            f"{result.error.type}: {result.error.message}"
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -100,14 +136,10 @@ def main(argv: list[str] | None = None) -> None:
         if not user_input.strip():
             continue
 
-        result = agent.run(user_input)
+        result = agent.run(user_input, on_event=print_agent_event)
         store.append_turn(
             session.session_id,
             result.request,
             result.response,
             result.items,
         )
-        local_time = result.response_timestamp_utc.astimezone().isoformat(
-            timespec="seconds"
-        )
-        print(f"Assistant [{local_time}]: {result.response.content}")

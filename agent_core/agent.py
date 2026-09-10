@@ -1,13 +1,13 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Iterable
+from typing import Callable, Iterable, TypeAlias
 
 from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
-from .tools import Tool, ToolCall, ToolRegistry
+from .tools import Tool, ToolCall, ToolRegistry, ToolResult
 from .workspace import Workspace
 
 
@@ -50,6 +50,27 @@ class AgentRunResult:
     response_timestamp_utc: datetime
 
 
+@dataclass(frozen=True)
+class ToolCallEvent:
+    tool_call: ToolCall
+
+
+@dataclass(frozen=True)
+class AssistantMessageEvent:
+    content: str
+    timestamp_utc: datetime
+
+
+@dataclass(frozen=True)
+class ToolResultEvent:
+    tool_result: ToolResult
+
+
+AgentEvent: TypeAlias = (
+    AssistantMessageEvent | ToolCallEvent | ToolResultEvent
+)
+
+
 class Agent:
     def __init__(
         self,
@@ -74,7 +95,11 @@ class Agent:
                 "max_context_tokens"
             )
 
-    def run(self, user_input: str) -> AgentRunResult:
+    def run(
+        self,
+        user_input: str,
+        on_event: Callable[[AgentEvent], None] | None = None,
+    ) -> AgentRunResult:
         turn_start = len(self._session.items)
         previous_tool_call_key: tuple[str, str] | None = None
         identical_tool_calls = 0
@@ -131,14 +156,26 @@ class Agent:
                 previous_tool_call_key = next_tool_call_key
                 identical_tool_calls = next_identical_calls
 
+                assistant_timestamp_utc = self._now().astimezone(timezone.utc)
                 self._session.add_item(
                     role="assistant",
                     content=response.content,
-                    timestamp_utc=self._now().astimezone(timezone.utc),
+                    timestamp_utc=assistant_timestamp_utc,
                     tool_calls=response.tool_calls,
                 )
+                if response.content and on_event is not None:
+                    on_event(
+                        AssistantMessageEvent(
+                            content=response.content,
+                            timestamp_utc=assistant_timestamp_utc,
+                        )
+                    )
                 for tool_call in response.tool_calls:
+                    if on_event is not None:
+                        on_event(ToolCallEvent(tool_call))
                     tool_result = self._tools.execute(tool_call)
+                    if on_event is not None:
+                        on_event(ToolResultEvent(tool_result))
                     self._session.add_item(
                         role="tool",
                         content=tool_result.to_content(),
@@ -158,6 +195,13 @@ class Agent:
                 response.content,
                 timestamp_utc=response_timestamp_utc,
             )
+            if on_event is not None:
+                on_event(
+                    AssistantMessageEvent(
+                        content=response.content,
+                        timestamp_utc=response_timestamp_utc,
+                    )
+                )
             return AgentRunResult(
                 request=request,
                 response=response,

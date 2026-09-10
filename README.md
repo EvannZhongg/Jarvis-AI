@@ -146,6 +146,20 @@ LLMResponse(
 3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
 4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
+Agent Core 会为模型的每次非空回复输出 `AssistantMessageEvent`，包括
+带 Tool Call 的中间说明；并在 Tool 开始和结束时分别输出
+`ToolCallEvent` 和 `ToolResultEvent`。CLI 使用这些结构化事件按执行顺序
+实时展示模型回复、Tool 名称、参数和执行状态，例如：
+
+```text
+Assistant [2026-09-10T16:00:00+08:00]
+I'll take a look at the workspace structure.
+→ Tool read_file {"path": "README.md"}
+✓ Tool read_file
+Assistant [2026-09-10T16:00:00+08:00]
+README.md 已读取。
+```
+
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
 执行次数由 `agent_config.json` 限制。CLI 默认注册
 `ReadFileTool`、`EditFileTool`、`SearchFilesTool` 和
