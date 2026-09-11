@@ -1,0 +1,387 @@
+import asyncio
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from agent_core import (
+    JsonlSessionStore,
+    LLMRequest,
+    LLMResponse,
+    Message,
+    Workspace,
+)
+
+try:
+    from fastapi.testclient import TestClient
+    from starlette.websockets import WebSocketDisconnect
+
+    from interfaces.gui import server
+except ModuleNotFoundError:  # pragma: no cover - exercised without [gui]
+    TestClient = None
+
+
+class FakeBridge:
+    """Stands in for the bridge child process.
+
+    Records what the server forwards and emits scripted protocol
+    messages in reply, so the relay can be tested without a model. A
+    ``None`` in a reply list ends the message stream, which is how a
+    real bridge exit reaches the server.
+    """
+
+    def __init__(
+        self,
+        replies: dict[str, list[dict | None]] | None = None,
+    ) -> None:
+        self.sent: list[dict] = []
+        self.cancelled = 0
+        self.closed = False
+        self._replies = replies or {}
+        self._messages: asyncio.Queue[dict | None] = asyncio.Queue()
+
+    def send(self, message: dict) -> None:
+        self.sent.append(message)
+        for reply in self._replies.get(str(message["type"]), ()):
+            self._messages.put_nowait(reply)
+
+    async def read(self) -> dict | None:
+        return await self._messages.get()
+
+    def cancel_turn(self) -> None:
+        self.cancelled += 1
+        self._messages.put_nowait(None)
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@unittest.skipIf(TestClient is None, "Install the gui extra to test the GUI")
+class GuiTest(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        (self.root / "README.md").write_text("Hello Jarvis", encoding="utf-8")
+        (self.root / "src").mkdir()
+        self.provider_config_path = self.root / "provider_config.json"
+        self.agent_config_path = self.root / "agent_config.json"
+        self.store = JsonlSessionStore(self.root / "sessions")
+
+    def client(self, bridge: FakeBridge | None = None) -> TestClient:
+        app = server.create_app(
+            Workspace(self.root),
+            self.store,
+            self.provider_config_path,
+            self.agent_config_path,
+            models={"first": "openai/first", "second": "openai/second"},
+            default_model="first",
+        )
+        client = TestClient(
+            app,
+            base_url="http://127.0.0.1",
+            headers={"host": "127.0.0.1"},
+        )
+        if bridge is not None:
+            async def spawn(cls: object, workspace: Workspace) -> FakeBridge:
+                return bridge
+
+            patcher = patch.object(
+                server.BridgeProcess,
+                "spawn",
+                classmethod(spawn),
+            )
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return client
+
+    def test_server_builds_start_so_pages_cannot_choose_a_config(self) -> None:
+        bridge = FakeBridge(replies={"user_turn": [{"type": "bye"}, None]})
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json(
+                    {
+                        "type": "start",
+                        "session_id": "resumed",
+                        "provider": "second",
+                        # Ignored: the server supplies its own paths.
+                        "provider_config_path": "/etc/passwd",
+                        "workspace": "/",
+                    }
+                )
+                socket.send_json(
+                    {"type": "user_turn", "turn_id": "t1", "text": "hi"}
+                )
+                self.assertEqual(socket.receive_json()["type"], "bye")
+
+        self.assertEqual(
+            bridge.sent[0],
+            {
+                "type": "start",
+                "workspace": str(self.root.resolve()),
+                "session_id": "resumed",
+                "provider_config_path": str(self.provider_config_path),
+                "agent_config_path": str(self.agent_config_path),
+                "provider": "second",
+            },
+        )
+        self.assertEqual(bridge.sent[1]["text"], "hi")
+
+    def test_rejects_unconfigured_provider_before_spawning(self) -> None:
+        bridge = FakeBridge()
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json({"type": "start", "provider": "unknown"})
+                message = socket.receive_json()
+
+        self.assertEqual(message["type"], "fatal")
+        self.assertEqual(bridge.sent, [])
+
+    def test_rejects_an_opening_message_that_is_not_start(self) -> None:
+        bridge = FakeBridge()
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json(
+                    {"type": "user_turn", "turn_id": "t1", "text": "hi"}
+                )
+                message = socket.receive_json()
+
+        self.assertEqual(message["error"]["type"], "ProtocolError")
+        self.assertEqual(bridge.sent, [])
+
+    def test_relays_approval_round_trip_in_both_directions(self) -> None:
+        bridge = FakeBridge(
+            replies={
+                "start": [{"type": "ready", "session_id": "s1"}],
+                "user_turn": [
+                    {
+                        "type": "approval_request",
+                        "turn_id": "t1",
+                        "request_id": "t1:1",
+                        "command": "ls",
+                    }
+                ],
+                "approval_response": [
+                    {"type": "turn_completed", "turn_id": "t1", "usage": None},
+                    None,
+                ],
+            }
+        )
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json({"type": "start", "session_id": None})
+                self.assertEqual(socket.receive_json()["type"], "ready")
+
+                socket.send_json(
+                    {"type": "user_turn", "turn_id": "t1", "text": "list"}
+                )
+                request = socket.receive_json()
+                self.assertEqual(request["command"], "ls")
+
+                socket.send_json(
+                    {
+                        "type": "approval_response",
+                        "request_id": request["request_id"],
+                        "approved": True,
+                    }
+                )
+                self.assertEqual(
+                    socket.receive_json()["type"],
+                    "turn_completed",
+                )
+
+        self.assertTrue(bridge.sent[-1]["approved"])
+        self.assertTrue(bridge.closed)
+
+    def test_does_not_forward_unknown_or_lifecycle_messages(self) -> None:
+        bridge = FakeBridge(
+            replies={
+                "start": [{"type": "ready"}],
+                "user_turn": [{"type": "bye"}, None],
+            }
+        )
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json({"type": "start", "session_id": None})
+                self.assertEqual(socket.receive_json()["type"], "ready")
+                # A page must not shut the bridge down or restart it.
+                socket.send_json({"type": "shutdown"})
+                socket.send_json({"type": "start", "session_id": "other"})
+                socket.send_json(
+                    {"type": "user_turn", "turn_id": "t1", "text": "hi"}
+                )
+                self.assertEqual(socket.receive_json()["type"], "bye")
+
+        self.assertEqual(
+            [message["type"] for message in bridge.sent],
+            ["start", "user_turn"],
+        )
+
+    def test_cancel_interrupts_the_bridge_without_being_forwarded(
+        self,
+    ) -> None:
+        bridge = FakeBridge(replies={"start": [{"type": "ready"}]})
+        with self.client(bridge) as client:
+            with client.websocket_connect("/api/session") as socket:
+                socket.send_json({"type": "start", "session_id": None})
+                self.assertEqual(socket.receive_json()["type"], "ready")
+                # The fake ends its stream on cancel, as an exiting
+                # bridge would.
+                socket.send_json({"type": "cancel"})
+                _wait_for(lambda: bridge.closed)
+
+        self.assertEqual(bridge.cancelled, 1)
+        self.assertEqual([m["type"] for m in bridge.sent], ["start"])
+
+    def test_refuses_a_second_page_while_one_is_connected(self) -> None:
+        bridge = FakeBridge(replies={"start": [{"type": "ready"}]})
+        with (
+            patch.object(server, "HANDOVER_TIMEOUT_SECONDS", 0.05),
+            self.client(bridge) as client,
+        ):
+            with client.websocket_connect("/api/session") as first:
+                first.send_json({"type": "start", "session_id": None})
+                self.assertEqual(first.receive_json()["type"], "ready")
+
+                with client.websocket_connect("/api/session") as second:
+                    message = second.receive_json()
+
+                first.send_json({"type": "cancel"})
+                _wait_for(lambda: bridge.closed)
+
+        self.assertEqual(message["error"]["type"], "SessionBusy")
+
+    def test_accepts_a_reconnect_once_the_previous_page_is_gone(self) -> None:
+        """Switching model reconnects; the agent must not look busy."""
+        bridge = FakeBridge(replies={"start": [{"type": "ready"}]})
+        with self.client(bridge) as client:
+            for _ in range(2):
+                with client.websocket_connect("/api/session") as socket:
+                    socket.send_json({"type": "start", "provider": "second"})
+                    self.assertEqual(socket.receive_json()["type"], "ready")
+                    socket.send_json({"type": "cancel"})
+                    _wait_for(lambda: bridge.closed)
+                bridge.closed = False
+
+        self.assertEqual(
+            [message["type"] for message in bridge.sent],
+            ["start", "start"],
+        )
+
+    def test_lists_models_without_requiring_keys(self) -> None:
+        with self.client() as client:
+            self.assertEqual(
+                client.get("/api/models").json(),
+                {
+                    "default": "first",
+                    "models": [
+                        {"id": "first", "model": "openai/first"},
+                        {"id": "second", "model": "openai/second"},
+                    ],
+                },
+            )
+
+    def test_reads_history_written_by_the_tui(self) -> None:
+        self.store.append_turn(
+            "from-tui",
+            LLMRequest("private prompt", ()),
+            LLMResponse("你好"),
+            (Message("user", "TUI 对话"), Message("assistant", "你好")),
+        )
+        with self.client() as client:
+            self.assertEqual(
+                client.get("/api/sessions").json(),
+                [{"session_id": "from-tui", "title": "TUI 对话"}],
+            )
+            data = client.get("/api/sessions/from-tui").json()
+
+        self.assertEqual(data["items"][0]["content"], "TUI 对话")
+        # Only the transcript is exposed, never the request configuration.
+        self.assertNotIn("request", data)
+        self.assertNotIn("private prompt", json.dumps(data))
+
+    def test_rejects_a_session_id_that_escapes_the_sessions_directory(
+        self,
+    ) -> None:
+        with self.client() as client:
+            response = client.get("/api/sessions/..%5Cescape")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_workspace_listing_rejects_traversal_and_external_symlinks(
+        self,
+    ) -> None:
+        (self.root / "outside").symlink_to(self.root.parent)
+        with self.client() as client:
+            listing = client.get("/api/workspace").json()
+            self.assertEqual(listing["root"], str(self.root.resolve()))
+            self.assertIn({"name": "src", "type": "directory"}, listing["entries"])
+            for path in ("..", "/tmp", "outside"):
+                self.assertEqual(
+                    client.get("/api/workspace", params={"path": path}).status_code,
+                    400,
+                )
+
+    def test_rejects_foreign_origins_and_hosts(self) -> None:
+        with self.client(FakeBridge()) as client:
+            with self.assertRaises(WebSocketDisconnect):
+                with client.websocket_connect(
+                    "/api/session",
+                    headers={"origin": "https://other.example"},
+                ):
+                    pass
+            self.assertEqual(
+                client.get(
+                    "/api/sessions",
+                    headers={"host": "other.example"},
+                ).status_code,
+                400,
+            )
+
+
+class GuiStartupTest(unittest.TestCase):
+    @unittest.skipIf(TestClient is None, "Install the gui extra to test the GUI")
+    def test_initializes_shared_default_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_directory = root / "jarvis"
+            with (
+                patch.object(
+                    server,
+                    "default_config_directory",
+                    return_value=config_directory,
+                ),
+                patch("uvicorn.run") as serve,
+                patch("builtins.print"),
+            ):
+                server.main(["--workspace", str(root)])
+
+            self.assertTrue(
+                (config_directory / "provider_config.json").is_file()
+            )
+            self.assertTrue((config_directory / "agent_config.json").is_file())
+            with TestClient(
+                serve.call_args.args[0],
+                base_url="http://127.0.0.1",
+            ) as client:
+                self.assertEqual(
+                    client.get("/api/models").json()["default"],
+                    "openai",
+                )
+
+
+def _wait_for(condition, timeout: float = 2.0) -> None:
+    """Waits for a relayed message to reach the fake bridge."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return
+        time.sleep(0.01)
+    raise AssertionError("timed out waiting for the relay")
+
+
+if __name__ == "__main__":
+    unittest.main()

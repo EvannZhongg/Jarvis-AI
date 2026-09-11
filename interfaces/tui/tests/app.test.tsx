@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 import { render } from 'ink-testing-library';
-import type { Incoming } from '../src/protocol.js';
+import type { Incoming } from '@jarvis/protocol';
 
 const sent: any[] = [];
 let emit: (message: Incoming) => void = () => {};

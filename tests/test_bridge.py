@@ -1,7 +1,9 @@
 import io
 import json
+import tempfile
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 from agent_core import (
     AssistantMessageDeltaEvent,
@@ -14,6 +16,7 @@ from agent_core import (
     ToolResultEvent,
 )
 from agent_core.llm import TokenUsage
+from agent_core.tools.config import TOOL_NAMES
 from interfaces.bridge.bridge import Bridge, Cancelled
 from interfaces.bridge.protocol import (
     decode,
@@ -226,6 +229,72 @@ class BridgeServeTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             bridge.serve()
         self.assertEqual(emitted(stdout)[0]["type"], "fatal")
+
+
+class BridgeStartTest(unittest.TestCase):
+    """The bridge selects the provider the interface asked for."""
+
+    def start_message(self, directory: Path, **extra: object) -> dict:
+        provider_config_path = directory / "provider_config.json"
+        provider_config_path.write_text(
+            json.dumps(
+                {
+                    "provider": "first",
+                    "providers": {
+                        "first": {
+                            "model": "openai/first",
+                            "max_context_tokens": 1000,
+                        },
+                        "second": {
+                            "model": "openai/second",
+                            "max_context_tokens": 1000,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        agent_config_path = directory / "agent_config.json"
+        agent_config_path.write_text(
+            json.dumps(
+                {
+                    "max_same_tool_calls": 5,
+                    "max_output_tokens": 100,
+                    "tools": {name: False for name in TOOL_NAMES},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "type": "start",
+            "workspace": str(directory),
+            "session_id": None,
+            "provider_config_path": str(provider_config_path),
+            "agent_config_path": str(agent_config_path),
+            **extra,
+        }
+
+    def started_model(self, **extra: object) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            bridge, stdout = make_bridge([])
+            bridge.start(self.start_message(Path(directory), **extra))
+            return str(emitted(stdout)[0]["model"])
+
+    def test_uses_the_configured_provider_by_default(self) -> None:
+        self.assertEqual(self.started_model(), "openai/first")
+
+    def test_uses_the_requested_provider(self) -> None:
+        self.assertEqual(
+            self.started_model(provider="second"),
+            "openai/second",
+        )
+
+    def test_falls_back_to_the_configured_provider_when_unset(self) -> None:
+        self.assertEqual(self.started_model(provider=None), "openai/first")
+
+    def test_rejects_an_unconfigured_provider(self) -> None:
+        with self.assertRaisesRegex(ValueError, "not configured"):
+            self.started_model(provider="unknown")
 
 
 if __name__ == "__main__":

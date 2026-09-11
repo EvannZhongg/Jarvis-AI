@@ -1,6 +1,7 @@
 # Jarvis
 
-终端 AI Agent：Python Agent Runtime + TypeScript（Ink + React）TUI。
+个人 AI Agent：Python Agent Runtime，配 TypeScript（Ink + React）终端界面和
+React + assistant-ui 可视化界面。
 
 ## 安装
 
@@ -19,6 +20,8 @@ npm install --prefix interfaces/tui
 npm run build --prefix interfaces/tui
 python -m pip install -e .
 ```
+
+可视化界面是可选的，构建步骤见 [GUI](#gui)。
 
 ## 使用
 
@@ -118,6 +121,11 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
 上下文；省略时通过 LiteLLM 的模型元数据读取 `max_input_tokens`。如果
 LiteLLM 没有该模型的上下文元数据，则必须显式配置该字段。
 
+对 OpenAI 兼容服务，`model` 也需要 LiteLLM 的接口前缀。例如智谱可配置
+`openai/glm-5.3`，`url` 使用 `https://open.bigmodel.cn/api/paas/v4/`。
+这里的 `openai/` 表示接口协议，请求仍发送到配置的 `url`；`providers`
+中的条目名称不会自动作为 LiteLLM 的服务商标识。
+
 `key` 支持直接填写，也支持 `${ENV_NAME}` 形式从环境变量或配置目录下的
 `.env` 读取。例如：
 
@@ -163,6 +171,68 @@ Workspace 会作为显式对象传入 Agent Runtime。`Soul.md` 使用
 底部也会显示解析出的 Workspace 与模型。
 
 按 `Ctrl+D` 或在空输入时按 `Ctrl+C` 退出。
+
+## GUI
+
+GUI 使用 React + assistant-ui，布局为左侧 Sessions、中间 Chat、右侧
+Workspace。新建会话、恢复历史、Markdown 回复、展开工具参数和结果、
+Shell 执行确认以及目录展开均可直接在浏览器中操作。
+
+模型和密钥沿用上面的配置步骤：首次运行会生成 `~/.jarvis/`，编辑
+`~/.jarvis/provider_config.json`，密钥可放在 `~/.jarvis/.env`。
+
+输入框左下角可以选择 `~/.jarvis/provider_config.json` 中配置的模型，默认选中
+`provider` 对应的条目。切换从下一轮消息生效，保留当前会话上下文；执行期间
+不可切换。选择只影响当前 GUI 页面，不修改配置文件或 TUI 的默认模型。
+未配置所选服务商的密钥时，发送消息会显示配置错误。
+
+安装 GUI 依赖并构建前端：
+
+```bash
+source .venv/bin/activate
+python -m pip install -e '.[gui]'
+npm install --prefix interfaces/gui
+npm run build --prefix interfaces/gui
+jarvis-gui
+```
+
+打开 <http://127.0.0.1:8000>。也可以指定工作目录和配置文件：
+
+```bash
+jarvis-gui --workspace ~/projects/my-project
+jarvis-gui --config path/to/provider_config.json --agent-config path/to/agent_config.json
+```
+
+GUI 和 TUI 共用同一个 Agent Runtime：每个 WebSocket 连接对应一个
+`python -m interfaces.bridge` 子进程，服务端只在浏览器和 Bridge 之间转发
+协议消息，不含任何 Agent 执行逻辑。因此模型配置、Tool 注册、Shell 授权、
+Session 落盘和取消行为都与 TUI 完全一致，模型回复同样逐 token 流式输出。
+
+执行中的工具卡显示名称、参数和成功/失败状态；`tool_result` 协议消息不携带
+工具输出（大结果已转存为 Session Artifact），完整输出在本轮结束后随 Session
+刷新出现。右侧目录随任务完成刷新，也可手动刷新；当前只浏览目录，不提供
+文件编辑器。
+
+会话在一轮成功执行后保存，首次保存后出现在左侧列表。恢复会话时使用
+本次启动的 Workspace，与 TUI 的恢复行为一致。执行期间暂时禁用会话切换。
+执行中可以点击「停止」中断当前轮次，等同 TUI 的 `Esc`；被取消的轮次不会
+写入 Session 文件，已执行的工具操作不会撤销。同一时刻只允许一个页面驱动
+Agent，第二个页面会收到提示。
+
+前端开发时，先启动 `jarvis-gui`，另开终端运行：
+
+```bash
+npm run dev --prefix interfaces/gui
+```
+
+访问 Vite 显示的 <http://127.0.0.1:5173>，API 和 WebSocket 会代理到
+Python 服务。服务仅监听本机地址。
+
+代码位于 `interfaces/gui/server.py`（HTTP API 与中继）和
+`interfaces/gui/src/`（界面），构建产物位于 `interfaces/gui/static/`，
+不提交到版本控制。
+
+## Runtime 与 Session
 
 每次模型请求都会将 `agent_core/prompts/Soul.md` 和当前 Workspace 作为
 系统指令加载到 `LLMRequest.system_prompt`。Agent Core 不决定系统指令在
@@ -306,12 +376,17 @@ jarvis --agent-config path/to/agent_config.json
 
 ## 架构
 
-Agent Runtime 与界面解耦。TUI 是 Node 进程，Agent Runtime 运行在独立的
-Python 子进程中，两者通过 stdio 上的 newline-delimited JSON 通信：
+Agent Runtime 与界面解耦。界面进程不直接调用 Agent Runtime，而是启动一个
+Python 子进程，通过 stdio 上的 newline-delimited JSON 通信：
 
 ```text
 jarvis (Python console script)
   └─ node interfaces/tui/dist/app.js      Ink + React 界面，持有 TTY
+       └─ python -m interfaces.bridge      Agent Runtime
+            └─ agent_core                  与界面无关
+
+jarvis-gui (Python console script)
+  └─ interfaces/gui/server.py             HTTP API + WebSocket 中继
        └─ python -m interfaces.bridge      Agent Runtime
             └─ agent_core                  与界面无关
 ```
@@ -322,7 +397,9 @@ Jarvis/
 └── interfaces/
     ├── launch.py        jarvis 命令入口
     ├── bridge/          Runtime 与协议的适配层
-    └── tui/             TypeScript + Ink + React 界面
+    ├── protocol/        TUI 与 GUI 共用的协议类型
+    ├── tui/             TypeScript + Ink + React 终端界面
+    └── gui/             FastAPI 中继 + React + assistant-ui 界面
 ```
 
 `interfaces/bridge` 只负责把 `AgentEvent` 翻译成协议消息，不包含任何
@@ -330,13 +407,18 @@ Agent 决策逻辑；界面只负责渲染协议消息和采集输入。Bridge �
 换成私有协议通道，其余输出重定向到 stderr，避免第三方库写 stdout 破坏
 协议流。
 
+GUI 服务端同样不含 Agent 执行逻辑：它把浏览器的 `user_turn` 和
+`approval_response` 转发给 Bridge，把 Bridge 的协议消息转发给浏览器。
+`start` 消息由服务端构造，页面无法指定配置文件路径。协议类型定义只有一份，
+Python 侧在 `interfaces/bridge/protocol.py`，TypeScript 侧在
+`interfaces/protocol/`，由 TUI 和 GUI 共同引用。
+
 模型回答以增量方式流式渲染：`LLMProvider.stream()` 在产出
 `LLMResponse` 的同时通过回调上报文本分片，Agent Loop 将其作为
 `AssistantMessageDeltaEvent` 发出。
 
-Agent 执行中按 `Esc` 或 `Ctrl+C` 会向 Runtime 发送 `SIGINT` 取消当前
-轮次。被取消的轮次不会写入 Session 文件，界面会显式标注
-`Cancelled (not saved)`。
+Agent 执行中按 `Esc` 或 `Ctrl+C`（GUI 中点击「停止」）会向 Runtime 发送
+`SIGINT` 取消当前轮次。被取消的轮次不会写入 Session 文件，界面会显式标注。
 
 ## 测试
 
@@ -346,9 +428,11 @@ Python 测试使用 Mock Provider，不需要真实 API Key：
 python -m unittest discover -s tests -v
 ```
 
-终端界面测试：
+界面测试：
 
 ```bash
 npm test --prefix interfaces/tui
 npm run typecheck --prefix interfaces/tui
+npm test --prefix interfaces/gui
+npm run typecheck --prefix interfaces/gui
 ```

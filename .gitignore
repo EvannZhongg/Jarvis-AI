@@ -10,5 +10,6 @@ build/
 /sessions/
 node_modules/
 interfaces/tui/dist/
+interfaces/gui/static/
 CubeSandbox/
 nanobot/

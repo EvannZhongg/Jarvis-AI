@@ -12,6 +12,26 @@ class JsonlSessionStore:
     def __init__(self, directory: Path) -> None:
         self._directory = directory
 
+    def list_sessions(self) -> list[dict[str, str]]:
+        """Summarize stored sessions, most recently updated first."""
+        if not self._directory.is_dir():
+            return []
+
+        entries = []
+        for directory in self._directory.iterdir():
+            if not directory.is_dir():
+                continue
+            path = session_log_path(self._directory, directory.name)
+            if not path.is_file():
+                continue
+            entries.append((path.stat().st_mtime_ns, directory.name, path))
+
+        entries.sort(key=lambda entry: (entry[0], entry[1]), reverse=True)
+        return [
+            {"session_id": session_id, "title": _session_title(path, session_id)}
+            for _, session_id, path in entries
+        ]
+
     def load(self, session_id: str) -> Session:
         path = self._session_path(session_id)
         if not path.exists():
@@ -87,6 +107,18 @@ class JsonlSessionStore:
 
     def _session_path(self, session_id: str) -> Path:
         return session_log_path(self._directory, session_id)
+
+
+def _session_title(path: Path, session_id: str) -> str:
+    """Use the session's first user message as its title."""
+    with path.open(encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+            for item in json.loads(line)["items"]:
+                if item["role"] == "user" and item.get("content"):
+                    return item["content"]
+    return session_id
 
 
 def _message_to_dict(message: Message) -> dict[str, object]:

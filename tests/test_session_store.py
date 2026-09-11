@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -12,9 +13,74 @@ from agent_core import (
     TokenUsage,
     ToolCall,
 )
+from agent_core.session_paths import session_log_path
 
 
 class JsonlSessionStoreTest(unittest.TestCase):
+    def test_lists_sessions_once_in_recent_turn_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sessions_directory = Path(directory) / "sessions"
+            store = JsonlSessionStore(sessions_directory)
+
+            self.assertEqual(store.list_sessions(), [])
+
+            turns = (
+                ("first", "第一轮"),
+                ("second", "另一个会话"),
+                ("first", "后续问题"),
+            )
+            for index, (session_id, content) in enumerate(turns, start=1):
+                store.append_turn(
+                    session_id,
+                    LLMRequest("prompt", ()),
+                    LLMResponse("answer"),
+                    (
+                        Message("user", content),
+                        Message("assistant", "answer"),
+                    ),
+                )
+                os.utime(
+                    session_log_path(sessions_directory, session_id),
+                    (index, index),
+                )
+
+            # Each session appears once, titled by its first user message.
+            self.assertEqual(
+                store.list_sessions(),
+                [
+                    {"session_id": "first", "title": "第一轮"},
+                    {"session_id": "second", "title": "另一个会话"},
+                ],
+            )
+
+    def test_lists_session_id_when_no_user_message_was_stored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sessions_directory = Path(directory) / "sessions"
+            store = JsonlSessionStore(sessions_directory)
+            store.append_turn(
+                "no-title",
+                LLMRequest("prompt", ()),
+                LLMResponse("answer"),
+                (Message("assistant", "answer"),),
+            )
+
+            self.assertEqual(
+                store.list_sessions(),
+                [{"session_id": "no-title", "title": "no-title"}],
+            )
+
+    def test_ignores_session_directories_without_a_log(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sessions_directory = Path(directory) / "sessions"
+            # A normalized tool result creates the directory before the
+            # first turn is appended.
+            (sessions_directory / "artifacts-only").mkdir(parents=True)
+
+            self.assertEqual(
+                JsonlSessionStore(sessions_directory).list_sessions(),
+                [],
+            )
+
     def test_appends_complete_turn_items(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             sessions_directory = Path(directory) / "sessions"

@@ -1,5 +1,5 @@
-import type { Incoming, ProtocolError, Usage } from './protocol.js';
-import { stripTimestamp } from './protocol.js';
+import type { Incoming, ProtocolError, Usage } from '@jarvis/protocol';
+import { stripTimestamp } from '@jarvis/protocol';
 
 export type Status =
   | 'starting'

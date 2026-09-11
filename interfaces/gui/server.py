@@ -1,0 +1,333 @@
+"""HTTP and WebSocket front end for the agent bridge.
+
+The server owns no agent logic: each WebSocket connection spawns a
+``python -m interfaces.bridge`` child and relays protocol messages
+between it and the browser. Session persistence, shell approval and
+cancellation therefore behave exactly as they do in the TUI.
+"""
+
+import argparse
+import asyncio
+import json
+import signal
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from agent_core import JsonlSessionStore, ListDirectoryTool, Workspace
+
+from ..bridge.config import (
+    default_config_directory,
+    initialize_default_configs,
+    load_model_options,
+)
+
+
+STATIC_PATH = Path(__file__).resolve().parent / "static"
+HOST = "127.0.0.1"
+PORT = 8000
+SHUTDOWN_TIMEOUT_SECONDS = 2
+# A page switching model reconnects while the previous bridge is still
+# shutting down; only a genuinely occupied agent should be refused.
+HANDOVER_TIMEOUT_SECONDS = 5
+
+# Messages the browser may forward to the bridge verbatim. 'start' is
+# excluded: the server builds it so a page cannot point the agent at an
+# arbitrary configuration file.
+RELAYED_MESSAGE_TYPES = frozenset({"user_turn", "approval_response"})
+
+
+class BridgeProcess:
+    """A bridge child process addressed as a protocol message stream."""
+
+    def __init__(self, process: asyncio.subprocess.Process) -> None:
+        self._process = process
+
+    @classmethod
+    async def spawn(cls, workspace: Workspace) -> "BridgeProcess":
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "interfaces.bridge",
+            cwd=workspace.path,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        return cls(process)
+
+    def send(self, message: dict[str, object]) -> None:
+        stdin = self._process.stdin
+        if stdin is None or stdin.is_closing():
+            return
+        stdin.write(
+            (json.dumps(message, ensure_ascii=False) + "\n").encode("utf-8")
+        )
+
+    async def read(self) -> dict[str, object] | None:
+        """Return the next message from the bridge, or None once it ends."""
+        stdout = self._process.stdout
+        if stdout is None:
+            return None
+        while True:
+            line = await stdout.readline()
+            if not line:
+                return None
+            stripped = line.strip()
+            if stripped:
+                return json.loads(stripped)
+
+    def cancel_turn(self) -> None:
+        """Interrupt the running turn, as Esc does in the TUI."""
+        if self._process.returncode is None:
+            self._process.send_signal(signal.SIGINT)
+
+    async def close(self) -> None:
+        self.send({"type": "shutdown"})
+        if self._process.stdin is not None:
+            self._process.stdin.close()
+        try:
+            await asyncio.wait_for(
+                self._process.wait(),
+                timeout=SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        except (asyncio.TimeoutError, ConnectionResetError):
+            if self._process.returncode is None:
+                self._process.kill()
+                await self._process.wait()
+
+
+def create_app(
+    workspace: Workspace,
+    store: JsonlSessionStore,
+    provider_config_path: Path,
+    agent_config_path: Path,
+    *,
+    models: dict[str, str],
+    default_model: str,
+) -> FastAPI:
+    app = FastAPI(title="Jarvis", docs_url=None, redoc_url=None)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[HOST, "localhost"])
+    # One agent at a time: concurrent turns would write the same workspace.
+    session_lock = asyncio.Lock()
+
+    @app.get("/api/models")
+    def list_models() -> dict[str, object]:
+        return {
+            "default": default_model,
+            "models": [
+                {"id": name, "model": model}
+                for name, model in models.items()
+            ],
+        }
+
+    @app.get("/api/sessions")
+    def list_sessions() -> list[dict[str, str]]:
+        return store.list_sessions()
+
+    @app.get("/api/sessions/{session_id}")
+    def get_session(session_id: str) -> object:
+        try:
+            return jsonable_encoder(store.load(session_id))
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.get("/api/workspace")
+    def get_workspace(path: str = ".") -> dict[str, object]:
+        try:
+            listing = ListDirectoryTool(workspace).execute({"path": path})
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"root": str(workspace.path), **listing}
+
+    @app.websocket("/api/session")
+    async def run_session(websocket: WebSocket) -> None:
+        # A page served from elsewhere must not be able to drive the agent.
+        origin = websocket.headers.get("origin")
+        allowed_origins = {
+            f"http://{websocket.headers.get('host')}",
+            f"http://{HOST}:5173",
+            "http://localhost:5173",
+        }
+        if origin is not None and origin not in allowed_origins:
+            await websocket.close(code=1008)
+            return
+
+        await websocket.accept()
+        # A page reconnects to switch model, so briefly wait out the
+        # previous connection's shutdown before declaring the agent busy.
+        try:
+            await asyncio.wait_for(
+                session_lock.acquire(),
+                timeout=HANDOVER_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            await websocket.send_json(
+                {
+                    "type": "fatal",
+                    "error": {
+                        "type": "SessionBusy",
+                        "message": "Jarvis 正在另一个页面中执行任务。",
+                    },
+                }
+            )
+            await websocket.close()
+            return
+
+        try:
+            try:
+                opening = await websocket.receive_json()
+                start = _start_message(
+                    opening,
+                    workspace,
+                    provider_config_path,
+                    agent_config_path,
+                    models,
+                )
+            except WebSocketDisconnect:
+                return
+            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                await websocket.send_json(
+                    {
+                        "type": "fatal",
+                        "error": {
+                            "type": "ProtocolError",
+                            "message": str(error),
+                        },
+                    }
+                )
+                await websocket.close()
+                return
+
+            bridge = await BridgeProcess.spawn(workspace)
+            bridge.send(start)
+            try:
+                await _relay(websocket, bridge)
+            finally:
+                await bridge.close()
+        finally:
+            session_lock.release()
+
+    if STATIC_PATH.is_dir():
+        app.mount("/", StaticFiles(directory=STATIC_PATH, html=True), name="gui")
+    return app
+
+
+def _start_message(
+    opening: object,
+    workspace: Workspace,
+    provider_config_path: Path,
+    agent_config_path: Path,
+    models: dict[str, str],
+) -> dict[str, object]:
+    """Build the bridge's 'start' from the browser's session choice."""
+    if not isinstance(opening, dict) or opening.get("type") != "start":
+        raise ValueError("first message must be 'start'")
+
+    session_id = opening.get("session_id")
+    if session_id is not None and not isinstance(session_id, str):
+        raise ValueError("'session_id' must be a string or null")
+
+    provider = opening.get("provider")
+    if provider is not None and provider not in models:
+        raise ValueError("请选择已配置的模型。")
+
+    return {
+        "type": "start",
+        "workspace": str(workspace.path),
+        "session_id": session_id,
+        "provider_config_path": str(provider_config_path),
+        "agent_config_path": str(agent_config_path),
+        "provider": provider,
+    }
+
+
+async def _relay(websocket: WebSocket, bridge: BridgeProcess) -> None:
+    """Pump messages both ways until either side closes."""
+
+    async def browser_to_bridge() -> None:
+        while True:
+            message = await websocket.receive_json()
+            if not isinstance(message, dict):
+                continue
+            message_type = message.get("type")
+            if message_type == "cancel":
+                bridge.cancel_turn()
+            elif message_type in RELAYED_MESSAGE_TYPES:
+                bridge.send(message)
+
+    async def bridge_to_browser() -> None:
+        while True:
+            message = await bridge.read()
+            if message is None:
+                return
+            await websocket.send_json(message)
+
+    tasks = [
+        asyncio.create_task(browser_to_bridge()),
+        asyncio.create_task(bridge_to_browser()),
+    ]
+    try:
+        done, _ = await asyncio.wait(
+            tasks,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in done:
+            error = task.exception()
+            # A page closing mid-turn is normal; anything else is a bug
+            # and belongs in the server log.
+            if error is not None and not isinstance(
+                error,
+                (WebSocketDisconnect, json.JSONDecodeError),
+            ):
+                raise error
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def main(argv: list[str] | None = None) -> None:
+    import uvicorn
+
+    config_directory = default_config_directory()
+    parser = argparse.ArgumentParser(prog="jarvis-gui")
+    parser.add_argument("--workspace", type=Path, default=None)
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=config_directory / "provider_config.json",
+    )
+    parser.add_argument(
+        "--agent-config",
+        type=Path,
+        default=config_directory / "agent_config.json",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        initialize_default_configs(config_directory)
+        workspace = Workspace(args.workspace or Path.cwd())
+        default_model, models = load_model_options(args.config)
+        app = create_app(
+            workspace,
+            JsonlSessionStore(workspace.path / "sessions"),
+            args.config,
+            args.agent_config,
+            models=models,
+            default_model=default_model,
+        )
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"Failed to start Jarvis: {error}") from error
+
+    print(f"Workspace: {workspace.path}")
+    print(f"Jarvis GUI: http://{HOST}:{PORT}")
+    if not STATIC_PATH.is_dir():
+        print(
+            "The interface is not built. Run 'npm install && npm run build' "
+            "in interfaces/gui."
+        )
+    uvicorn.run(app, host=HOST, port=PORT)

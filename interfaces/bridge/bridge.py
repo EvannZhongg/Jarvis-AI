@@ -96,7 +96,11 @@ class Bridge:
         load_dotenv(config_path.parent / ".env")
 
         workspace = Workspace(Path(str(message["workspace"])))
-        config = load_config(config_path)
+        provider = message.get("provider")
+        config = load_config(
+            config_path,
+            provider if isinstance(provider, str) and provider else None,
+        )
         agent_config = load_agent_config(agent_config_path)
 
         session_id = message.get("session_id")

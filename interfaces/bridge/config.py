@@ -39,7 +39,8 @@ def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
     return tuple(created)
 
 
-def load_config(path: Path) -> ModelConfig:
+def _read_config(path: Path) -> tuple[str, dict[str, object]]:
+    """Return the configured default provider name and all providers."""
     with path.open(encoding="utf-8") as file:
         data = json.load(file)
 
@@ -50,16 +51,48 @@ def load_config(path: Path) -> ModelConfig:
     provider = provider.strip()
     if not isinstance(providers, dict):
         raise ValueError("config field 'providers' must be an object")
+    if provider not in providers:
+        raise ValueError(f"provider '{provider}' is not configured")
+    return provider, providers
 
+
+def _provider_entry(
+    providers: dict[str, object],
+    provider: str,
+) -> dict[str, object]:
     selected = providers.get(provider)
     if not isinstance(selected, dict):
         raise ValueError(f"provider '{provider}' is not configured")
+    return selected
 
+
+def _model_name(selected: dict[str, object], provider: str) -> str:
     model = selected.get("model")
     if not isinstance(model, str) or not model.strip():
         raise ValueError(
             f"provider '{provider}' field 'model' must be a non-empty string"
         )
+    return model.strip()
+
+
+def load_model_options(path: Path) -> tuple[str, dict[str, str]]:
+    """Return the default provider name and every provider's model name.
+
+    Keys are deliberately not resolved: listing the choices must not
+    require a key for providers the user is not using.
+    """
+    default, providers = _read_config(path)
+    return default, {
+        name: _model_name(_provider_entry(providers, name), name)
+        for name in providers
+    }
+
+
+def load_config(path: Path, provider: str | None = None) -> ModelConfig:
+    default, providers = _read_config(path)
+    provider = default if provider is None else provider
+    selected = _provider_entry(providers, provider)
+    model = _model_name(selected, provider)
 
     url = _optional_string(selected, "url", provider)
     key = _optional_string(selected, "key", provider)
@@ -83,7 +116,7 @@ def load_config(path: Path) -> ModelConfig:
             )
 
     return ModelConfig(
-        model=model.strip(),
+        model=model,
         url=url,
         key=key,
         max_context_tokens=max_context_tokens,

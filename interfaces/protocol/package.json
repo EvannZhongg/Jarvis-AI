@@ -1,0 +1,8 @@
+{
+  "name": "@jarvis/protocol",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/protocol.ts"
+  }
+}

@@ -1,10 +1,18 @@
 // Wire protocol shared with interfaces/bridge. Keep in sync with
 // interfaces/bridge/protocol.py.
 
+export type JSONValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly JSONValue[]
+  | { readonly [key: string]: JSONValue };
+
 export type ToolCall = {
   id: string;
   name: string;
-  arguments: unknown;
+  arguments: { readonly [key: string]: JSONValue };
 };
 
 export type ProtocolError = {
@@ -71,6 +79,8 @@ export type Outgoing =
       session_id: string | null;
       provider_config_path: string;
       agent_config_path: string;
+      // Omitted to use the provider selected in the configuration file.
+      provider?: string;
     }
   | { type: 'user_turn'; turn_id: string; text: string }
   | { type: 'approval_response'; request_id: string; approved: boolean }
