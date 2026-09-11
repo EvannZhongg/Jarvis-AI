@@ -1,14 +1,7 @@
 import json
 import os
 from dataclasses import dataclass
-from importlib.resources import files
 from pathlib import Path
-
-
-DEFAULT_CONFIG_FILENAMES = (
-    "provider_config.json",
-    "agent_config.json",
-)
 
 
 @dataclass(frozen=True)
@@ -19,27 +12,7 @@ class ModelConfig:
     max_context_tokens: int | None = None
 
 
-def default_config_directory() -> Path:
-    return Path.home() / ".jarvis"
-
-
-def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
-    created = []
-    defaults = files("agent_cli.defaults")
-    for filename in DEFAULT_CONFIG_FILENAMES:
-        path = directory / filename
-        if path.exists():
-            continue
-        directory.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            defaults.joinpath(filename).read_text(encoding="utf-8"),
-            encoding="utf-8",
-        )
-        created.append(path)
-    return tuple(created)
-
-
-def load_config(path: Path) -> ModelConfig:
+def _read_config(path: Path) -> tuple[str, dict]:
     with path.open(encoding="utf-8") as file:
         data = json.load(file)
 
@@ -50,8 +23,12 @@ def load_config(path: Path) -> ModelConfig:
     provider = provider.strip()
     if not isinstance(providers, dict):
         raise ValueError("config field 'providers' must be an object")
+    if provider not in providers:
+        raise ValueError(f"provider '{provider}' is not configured")
+    return provider, providers
 
-    selected = providers.get(provider)
+
+def _model_name(selected: object, provider: str) -> str:
     if not isinstance(selected, dict):
         raise ValueError(f"provider '{provider}' is not configured")
 
@@ -60,6 +37,22 @@ def load_config(path: Path) -> ModelConfig:
         raise ValueError(
             f"provider '{provider}' field 'model' must be a non-empty string"
         )
+    return model.strip()
+
+
+def load_model_options(path: Path) -> tuple[str, dict[str, str]]:
+    default, providers = _read_config(path)
+    return default, {
+        name: _model_name(selected, name)
+        for name, selected in providers.items()
+    }
+
+
+def load_config(path: Path, provider: str | None = None) -> ModelConfig:
+    default, providers = _read_config(path)
+    provider = default if provider is None else provider
+    selected = providers.get(provider)
+    model = _model_name(selected, provider)
 
     url = _optional_string(selected, "url", provider)
     key = _optional_string(selected, "key", provider)

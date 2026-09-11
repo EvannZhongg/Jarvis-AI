@@ -11,6 +11,23 @@ class JsonlSessionStore:
     def __init__(self, directory: Path) -> None:
         self._directory = directory
 
+    def list_sessions(self) -> list[dict[str, str]]:
+        sessions = []
+        paths = sorted(
+            self._directory.glob("*.jsonl"),
+            key=lambda path: (path.stat().st_mtime_ns, path.name),
+            reverse=True,
+        )
+        for path in paths:
+            with path.open(encoding="utf-8") as file:
+                record = json.loads(file.readline())
+            title = next(
+                (item["content"] for item in record["items"] if item["role"] == "user"),
+                path.stem,
+            )
+            sessions.append({"session_id": path.stem, "title": title})
+        return sessions
+
     def load(self, session_id: str) -> Session:
         path = self._session_path(session_id)
         if not path.exists():

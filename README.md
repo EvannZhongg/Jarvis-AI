@@ -76,6 +76,11 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
 上下文；省略时通过 LiteLLM 的模型元数据读取 `max_input_tokens`。如果
 LiteLLM 没有该模型的上下文元数据，则必须显式配置该字段。
 
+对 OpenAI 兼容服务，`model` 也需要 LiteLLM 的接口前缀。例如智谱可配置
+`openai/glm-5.3`，`url` 使用 `https://open.bigmodel.cn/api/paas/v4/`。
+这里的 `openai/` 表示接口协议，请求仍发送到配置的 `url`；`providers`
+中的条目名称不会自动作为 LiteLLM 的服务商标识。
+
 `key` 支持直接填写，也支持 `${ENV_NAME}` 形式从环境变量或配置目录下的
 `.env` 读取。例如：
 
@@ -121,6 +126,61 @@ Workspace 会作为显式对象传入 Agent Runtime。`Soul.md` 使用
 也会输出解析后的绝对路径。
 
 输入 `exit` 或 `quit` 退出。
+
+## GUI
+
+GUI 使用 React + assistant-ui，布局为左侧 Sessions、中间 Chat、右侧
+Workspace。新建会话、恢复历史、Markdown 回复、展开工具参数和结果、
+Shell 执行确认以及目录展开均可直接在浏览器中操作。
+
+输入框左下角可以选择 `~/.jarvis/provider_config.json` 中配置的模型，默认选中
+`provider` 对应的条目。切换从下一轮消息生效，保留当前会话上下文；执行期间
+不可切换。选择只影响当前 GUI 页面，不修改配置文件或 CLI 的默认模型。
+未配置所选服务商的密钥时，发送消息会显示配置错误。
+
+在项目根目录安装 GUI 依赖并构建前端（需要 Node.js 20.19+）：
+模型和密钥沿用上面的配置步骤，先运行 `jarvis --init`，再编辑
+`~/.jarvis/provider_config.json`，密钥可放在 `~/.jarvis/.env`。
+
+```bash
+source .venv/bin/activate
+python -m pip install -e '.[gui]'
+npm --prefix gui install
+npm --prefix gui run build
+jarvis-gui
+```
+
+打开 <http://127.0.0.1:8000>。也可以指定工作目录和配置文件：
+
+```bash
+jarvis-gui --workspace ~/projects/my-project
+jarvis-gui --config path/to/provider_config.json --agent-config path/to/agent_config.json
+```
+
+GUI 和 CLI 调用同一个 `Agent.run()`，共用模型配置、工具注册和
+Workspace 下的 `sessions/<SESSION_ID>.jsonl`。GUI 通过 WebSocket 展示现有的消息和工具执行事件；
+当前模型回复按完整消息显示，不逐 token 输出。右侧目录随任务完成刷新，
+也可手动刷新；当前只浏览目录，不提供文件编辑器。
+
+会话在一轮成功执行后保存，首次保存后出现在左侧列表。恢复会话时使用
+本次启动的 Workspace，与 CLI 的恢复行为一致。执行期间暂时禁用会话
+切换；关闭页面会终止后续事件处理和未确认的 Shell 操作，已经开始的
+模型请求或命令会继续到返回。本轮未完成的对话不会保存，已执行的工具
+操作不会撤销。
+
+前端开发时，先启动 `jarvis-gui`，另开终端运行：
+
+```bash
+npm --prefix gui run dev
+```
+
+访问 Vite 显示的 <http://127.0.0.1:5173>，API 和 WebSocket 会代理到
+Python 服务。服务仅监听本机地址。
+
+代码分别位于 `agent_gui/server.py`（API 和启动入口）、`gui/src/`
+（界面），构建产物位于 `agent_gui/static/`，不提交到版本控制。
+
+## Runtime 与 Session
 
 每次模型请求都会将 `agent_core/prompts/Soul.md` 和当前 Workspace 作为
 系统指令加载到 `LLMRequest.system_prompt`。Agent Core 不决定系统指令在

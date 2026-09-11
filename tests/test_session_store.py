@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -15,6 +16,20 @@ from agent_core import (
 
 
 class JsonlSessionStoreTest(unittest.TestCase):
+    def test_lists_sessions_once_in_recent_turn_order_with_original_title(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonlSessionStore(Path(directory) / "sessions")
+            self.assertEqual(store.list_sessions(), [])
+            for index, (session_id, content) in enumerate((("first", "第一轮"), ("second", "另一个会话"), ("first", "后续问题"))):
+                store.append_turn(session_id, LLMRequest("prompt", ()), LLMResponse("answer"), (
+                    Message("user", content), Message("assistant", "answer"),
+                ))
+                os.utime(Path(directory) / "sessions" / f"{session_id}.jsonl", (index + 1, index + 1))
+            self.assertEqual(store.list_sessions(), [
+                {"session_id": "first", "title": "第一轮"},
+                {"session_id": "second", "title": "另一个会话"},
+            ])
+
     def test_appends_complete_turn_items(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             sessions_directory = Path(directory) / "sessions"
