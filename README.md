@@ -13,6 +13,8 @@ source .venv/bin/activate
 python -m pip install jarvis-agent
 ```
 
+Windows 上激活同一虚拟环境使用 `.\.venv\Scripts\Activate.ps1`。
+
 从源码安装时需要先构建终端界面：
 
 ```bash
@@ -25,7 +27,8 @@ python -m pip install -e .
 
 ## 使用
 
-在任意目录下执行：
+`jarvis` 是安装到虚拟环境 `Scripts` 目录下的命令，需要该环境处于激活状态
+（见[安装](#安装)），或把该 `Scripts` 目录加入 PATH。之后在任意目录下执行：
 
 ```bash
 jarvis
@@ -146,7 +149,8 @@ python -m pip install -e .
 
 ## 启动
 
-安装后会注册 `jarvis` 命令。进入任意项目目录直接启动：
+安装后会在虚拟环境的 `Scripts` 目录注册 `jarvis` 命令，激活该环境后即可使用。
+进入任意项目目录直接启动：
 
 ```bash
 cd ~/projects/my-project

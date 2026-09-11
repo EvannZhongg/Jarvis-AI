@@ -1,11 +1,14 @@
 """Console script that hands the terminal to the Ink UI.
 
-``execvp`` replaces this process so Node inherits the TTY directly and
-no Python parent sits between the terminal and the UI mangling signals.
+The UI runs as a child process that this script waits for.  ``execvp``
+cannot be used: on Windows it starts a new process and terminates this
+one, so the shell regains its prompt while the UI is still running and
+both then compete for console input.
 """
 
 import os
 import shutil
+import subprocess
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -36,4 +39,4 @@ def main() -> None:
 
     # The bridge must run in the interpreter that owns agent_core.
     os.environ["JARVIS_PYTHON"] = sys.executable
-    os.execvp(node, [node, str(bundle), *sys.argv[1:]])
+    raise SystemExit(subprocess.call([node, str(bundle), *sys.argv[1:]]))
