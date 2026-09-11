@@ -76,6 +76,7 @@ class CliArgumentsTest(unittest.TestCase):
                     return_value=AgentConfig(
                         max_same_tool_calls=5,
                         max_output_tokens=100,
+                        shell_timeout_seconds=30,
                         tools=ToolConfig(
                             enabled=frozenset(
                                 {
@@ -119,6 +120,7 @@ class CliArgumentsTest(unittest.TestCase):
                 tools[4]._executor,
                 SubprocessCommandExecutor,
             )
+            self.assertEqual(tools[4]._default_timeout_seconds, 30)
             self.assertIsInstance(
                 agent_class.call_args.kwargs["tool_policy"],
                 ShellApprovalPolicy,

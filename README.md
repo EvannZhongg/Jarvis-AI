@@ -31,6 +31,7 @@ Agent 的全局行为配置位于
 {
   "max_same_tool_calls": 5,
   "max_output_tokens": 8192,
+  "shell_timeout_seconds": 60,
   "tools": {
     "read_file": true,
     ...
@@ -49,6 +50,10 @@ Agent 的全局行为配置位于
 Tool 定义）的 token 数。输入超过模型最大上下文减去
 `max_output_tokens` 后的可用空间时，会在请求模型前抛出
 `ContextWindowExceededError`。
+
+`shell_timeout_seconds` 是 shell 命令的默认超时，默认为 60 秒，配置上限
+为 600 秒。Tool Call 可以通过 `timeout_seconds` 指定不超过该默认值的
+更短超时。
 
 `tools` 用于管理内置 Tool。值为 `true` 时注册并开放给模型，值为
 `false` 时不注册。所有已支持的 Tool 都需要显式配置；未知 Tool 名称、
@@ -167,8 +172,12 @@ CommandExecutor
 ```
 
 `ShellTool` 只负责参数校验和结果结构化，默认的
-`SubprocessCommandExecutor` 负责在指定工作目录启动本地进程。后续接入
-沙箱执行后端时，不需要把进程管理逻辑重新写回 Tool。
+`SubprocessCommandExecutor` 负责在指定工作目录启动独立子进程组。命令
+超时后会终止整个子进程组，而不是只终止 shell 父进程。`stdout` 与
+`stderr` 分别最多保留 50K chars；每个输出流超过限制时保留开头和结尾，
+并在中间标注该输出流被截断的字符数量。执行结果包含 `timed_out` 和实际采用的
+`timeout_seconds`。后续接入沙箱执行后端时，不需要把进程管理逻辑重新
+写回 Tool。
 
 `read_file` 支持可选的 `offset` 和 `limit` 参数，默认从第 1 行开始读取
 最多 2000 行，同时将返回内容限制在约 64K chars。超过 50 MiB 的文件会
@@ -219,7 +228,7 @@ LLMResponse(
 `list_directory` 返回指定目录的直接子项，`edit_file` 使用 `old_text`
 和 `new_text` 对唯一匹配的文本进行替换。`shell` 以 Workspace 为当前
 目录执行命令，并在每次执行前要求用户确认；结果包含退出码、标准输出和
-标准错误。
+标准错误、是否超时及采用的超时秒数。
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到

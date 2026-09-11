@@ -109,7 +109,7 @@ class ToolRegistryTest(unittest.TestCase):
 class ToolFactoryTest(unittest.TestCase):
     def test_creates_only_enabled_tools(self) -> None:
         class UnusedExecutor:
-            def execute(self, command):
+            def execute(self, command, timeout_seconds=60):
                 raise AssertionError("executor should not be called")
 
         with tempfile.TemporaryDirectory() as directory:
@@ -855,13 +855,14 @@ class ShellToolTest(unittest.TestCase):
             def __init__(self) -> None:
                 self.commands = []
 
-            def execute(self, command):
-                self.commands.append(command)
+            def execute(self, command, timeout_seconds=60):
+                self.commands.append((command, timeout_seconds))
                 return CommandExecutionResult(
                     command=command,
                     exit_code=7,
                     stdout="output",
                     stderr="warning",
+                    timeout_seconds=timeout_seconds,
                 )
 
         executor = RecordingExecutor()
@@ -869,7 +870,7 @@ class ShellToolTest(unittest.TestCase):
 
         result = tool.execute({"command": "example command"})
 
-        self.assertEqual(executor.commands, ["example command"])
+        self.assertEqual(executor.commands, [("example command", 60)])
         self.assertEqual(
             result,
             {
@@ -877,12 +878,52 @@ class ShellToolTest(unittest.TestCase):
                 "exit_code": 7,
                 "stdout": "output",
                 "stderr": "warning",
+                "timed_out": False,
+                "timeout_seconds": 60,
             },
         )
 
-    def test_requires_only_command_argument(self) -> None:
+    def test_allows_shorter_timeout_than_configured_default(self) -> None:
+        class RecordingExecutor:
+            def __init__(self) -> None:
+                self.timeouts = []
+
+            def execute(self, command, timeout_seconds=60):
+                self.timeouts.append(timeout_seconds)
+                return CommandExecutionResult(
+                    command=command,
+                    exit_code=0,
+                    stdout="",
+                    stderr="",
+                    timeout_seconds=timeout_seconds,
+                )
+
+        executor = RecordingExecutor()
+        tool = ShellTool(executor, default_timeout_seconds=60)
+
+        tool.execute({"command": "pwd", "timeout_seconds": 10})
+
+        self.assertEqual(executor.timeouts, [10])
+
+    def test_rejects_timeout_longer_than_configured_default(self) -> None:
         class UnusedExecutor:
-            def execute(self, command):
+            def execute(self, command, timeout_seconds=60):
+                raise AssertionError("executor should not be called")
+
+        tool = ShellTool(
+            UnusedExecutor(),
+            default_timeout_seconds=60,
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "cannot exceed the configured default of 60 seconds",
+        ):
+            tool.execute({"command": "pwd", "timeout_seconds": 61})
+
+    def test_validates_arguments(self) -> None:
+        class UnusedExecutor:
+            def execute(self, command, timeout_seconds=60):
                 raise AssertionError("executor should not be called")
 
         tool = ShellTool(UnusedExecutor())
@@ -891,6 +932,15 @@ class ShellToolTest(unittest.TestCase):
             tool.execute({})
         with self.assertRaisesRegex(ValueError, "accepts only"):
             tool.execute({"command": "pwd", "extra": True})
+        for timeout_seconds in (0, 601, True, "10"):
+            with self.subTest(timeout_seconds=timeout_seconds):
+                with self.assertRaisesRegex(ValueError, "between 1 and 600"):
+                    tool.execute(
+                        {
+                            "command": "pwd",
+                            "timeout_seconds": timeout_seconds,
+                        }
+                    )
 
 
 class ShellApprovalPolicyTest(unittest.TestCase):

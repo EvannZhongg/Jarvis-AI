@@ -178,6 +178,7 @@ def main(argv: list[str] | None = None) -> None:
             agent_config.tools,
             workspace,
             command_executor,
+            shell_timeout_seconds=agent_config.shell_timeout_seconds,
         ),
         tool_policy=ShellApprovalPolicy(request_shell_permission),
     )

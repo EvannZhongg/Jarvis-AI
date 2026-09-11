@@ -40,6 +40,7 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(provider_config["provider"], "openai")
             self.assertIn("openai", provider_config["providers"])
             self.assertEqual(agent_config["max_same_tool_calls"], 5)
+            self.assertEqual(agent_config["shell_timeout_seconds"], 60)
             self.assertTrue(agent_config["tools"]["read_file"])
 
     def test_initialization_does_not_overwrite_existing_config(self) -> None:
