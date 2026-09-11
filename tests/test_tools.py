@@ -932,9 +932,9 @@ class ShellToolTest(unittest.TestCase):
             tool.execute({})
         with self.assertRaisesRegex(ValueError, "accepts only"):
             tool.execute({"command": "pwd", "extra": True})
-        for timeout_seconds in (0, 601, True, "10"):
+        for timeout_seconds in (0, 901, True, "10"):
             with self.subTest(timeout_seconds=timeout_seconds):
-                with self.assertRaisesRegex(ValueError, "between 1 and 600"):
+                with self.assertRaisesRegex(ValueError, "between 1 and 900"):
                     tool.execute(
                         {
                             "command": "pwd",

@@ -52,7 +52,7 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
 `ContextWindowExceededError`。
 
 `shell_timeout_seconds` 是 shell 命令的默认超时，默认为 60 秒，配置上限
-为 600 秒。Tool Call 可以通过 `timeout_seconds` 指定不超过该默认值的
+为 900 秒。Tool Call 可以通过 `timeout_seconds` 指定不超过该默认值的
 更短超时。
 
 `tools` 用于管理内置 Tool。值为 `true` 时注册并开放给模型，值为

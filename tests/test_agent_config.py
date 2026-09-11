@@ -75,7 +75,7 @@ class AgentConfigTest(unittest.TestCase):
     def test_rejects_invalid_shell_timeout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "agent_config.json"
-            for timeout_seconds in (0, 601, True):
+            for timeout_seconds in (0, 901, True):
                 with self.subTest(timeout_seconds=timeout_seconds):
                     path.write_text(
                         json.dumps(
@@ -91,7 +91,7 @@ class AgentConfigTest(unittest.TestCase):
 
                     with self.assertRaisesRegex(
                         ValueError,
-                        "shell_timeout_seconds.*between 1 and 600",
+                        "shell_timeout_seconds.*between 1 and 900",
                     ):
                         load_agent_config(path)
 
