@@ -171,8 +171,13 @@ CommandExecutor
 沙箱执行后端时，不需要把进程管理逻辑重新写回 Tool。
 
 `read_file` 支持可选的 `offset` 和 `limit` 参数，默认从第 1 行开始读取
-最多 2000 行。返回内容带原始行号；文件尚未读完时会给出下一次读取使用的
-`offset`，到达末尾时会返回文件总行数。
+最多 2000 行，同时将返回内容限制在约 64K chars。超过 50 MiB 的文件会
+在读取前被拒绝，错误中包含实际文件大小；正常结果也包含
+`file_size_bytes`。返回内容带原始行号；超长单行会被裁剪并明确标记
+“该行被截断”。文件尚未读完或受到字符数限制时会给出下一次读取使用的
+`offset`，到达末尾时会返回文件总行数。文件内容通过顺序流式扫描读取，
+跳过前置行和处理超长单行时也只保留有界缓冲区；达到行数限制后使用一行
+lookahead 判断是否还有后续内容。
 
 `LLMResponse` 同时支持普通文本和 Tool Call：
 
@@ -204,7 +209,13 @@ LLMResponse(
 `ReadFileTool`、`EditFileTool`、`SearchFilesTool`、
 `ListDirectoryTool` 和 `ShellTool`。文件工具只接受 Workspace 内的相对
 路径；
-`search_files` 使用 Python 正则表达式递归搜索 UTF-8 文件内容，
+`search_files` 使用 Python 正则表达式递归搜索 UTF-8 文件内容，并支持
+`glob`、`offset`、`limit`、`case_insensitive` 和 `fixed_strings`。
+默认最多返回 200 个匹配，单次结构化输出不超过 16K chars，单文件最多
+扫描 1 MiB，总遍历路径数上限为 10,000；默认跳过 `.git`、`.venv`、
+`node_modules`、`build`、`dist`、`target` 等常见依赖、缓存和构建目录。
+返回值包含 `matches`、`has_more`、`next_offset`、`scanned_files` 和
+`skipped_files`。
 `list_directory` 返回指定目录的直接子项，`edit_file` 使用 `old_text`
 和 `new_text` 对唯一匹配的文本进行替换。`shell` 以 Workspace 为当前
 目录执行命令，并在每次执行前要求用户确认；结果包含退出码、标准输出和

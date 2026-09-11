@@ -3,6 +3,7 @@ import os
 import unittest
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from agent_core import (
     CommandExecutionResult,
@@ -17,8 +18,14 @@ from agent_core import (
     ToolConfig,
     ToolDefinition,
     ToolRegistry,
+    ToolResult,
     Workspace,
     create_tools,
+)
+from agent_core.tools.builtin.search_files import MAX_OUTPUT_CHARS
+from agent_core.tools.builtin.read_file import (
+    MAX_FILE_SIZE_BYTES as MAX_READ_FILE_SIZE_BYTES,
+    MAX_READ_CHARS,
 )
 
 
@@ -140,6 +147,9 @@ class ReadFileToolTest(unittest.TestCase):
                 result,
                 {
                     "path": "notes.txt",
+                    "file_size_bytes": len(
+                        "你好，Jarvis。\n第二行\n".encode("utf-8")
+                    ),
                     "content": (
                         "1| 你好，Jarvis。\n"
                         "2| 第二行\n\n"
@@ -168,13 +178,47 @@ class ReadFileToolTest(unittest.TestCase):
                 result,
                 {
                     "path": "notes.txt",
+                    "file_size_bytes": len(
+                        "\n".join(
+                            f"line {number}" for number in range(1, 6)
+                        ).encode("utf-8")
+                    ),
                     "content": (
                         "2| line 2\n"
                         "3| line 3\n\n"
-                        "(Showing lines 2-3 of 5. "
+                        "(Showing lines 2-3. "
                         "Use offset=4 to continue.)"
                     ),
                 },
+            )
+
+    def test_streams_file_without_reading_all_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "first\nsecond\nthird\n",
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError(
+                    "read_file must not load the whole file"
+                ),
+            ):
+                result = ReadFileTool(workspace).execute(
+                    {
+                        "path": "notes.txt",
+                        "offset": 2,
+                        "limit": 1,
+                    }
+                )
+
+            self.assertEqual(
+                result["content"],
+                "2| second\n\n"
+                "(Showing line 2. Use offset=3 to continue.)",
             )
 
     def test_defaults_to_first_2000_lines(self) -> None:
@@ -195,7 +239,7 @@ class ReadFileToolTest(unittest.TestCase):
             self.assertEqual(
                 content_lines[-1],
                 (
-                    "(Showing lines 1-2000 of 2001. "
+                    "(Showing lines 1-2000. "
                     "Use offset=2001 to continue.)"
                 ),
             )
@@ -237,6 +281,74 @@ class ReadFileToolTest(unittest.TestCase):
                 result["content"],
                 "(End of file — 1 lines total)",
             )
+
+    def test_limits_lines_and_characters_at_the_same_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "\n".join(
+                    f"line {number}: " + ("x" * 1000)
+                    for number in range(1, 100)
+                ),
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute(
+                {
+                    "path": "notes.txt",
+                    "offset": 1,
+                    "limit": 80,
+                }
+            )
+
+            self.assertLessEqual(len(result["content"]), MAX_READ_CHARS)
+            self.assertIn("character limit reached", result["content"])
+            self.assertIn("Use offset=", result["content"])
+            numbered_lines = [
+                line
+                for line in result["content"].splitlines()
+                if "| " in line
+            ]
+            self.assertLess(len(numbered_lines), 80)
+
+    def test_truncates_an_overlong_single_line_with_notice(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "x" * (MAX_READ_CHARS * 2),
+                encoding="utf-8",
+            )
+
+            result = ReadFileTool(workspace).execute(
+                {"path": "notes.txt"}
+            )
+
+            self.assertLessEqual(len(result["content"]), MAX_READ_CHARS)
+            self.assertIn("该行被截断", result["content"])
+            self.assertIn("character limit reached", result["content"])
+
+    def test_rejects_file_larger_than_size_limit_and_reports_size(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            file_path = workspace.path / "large.txt"
+            file_path.write_bytes(b"x" * 11)
+
+            with patch(
+                "agent_core.tools.builtin.read_file."
+                "MAX_FILE_SIZE_BYTES",
+                10,
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "size is 11 bytes.*maximum of 10 bytes",
+                ):
+                    ReadFileTool(workspace).execute(
+                        {"path": "large.txt"}
+                    )
+
+            self.assertEqual(MAX_READ_FILE_SIZE_BYTES, 50 * 1024 * 1024)
 
     def test_rejects_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -455,8 +567,6 @@ class SearchFilesToolTest(unittest.TestCase):
             self.assertEqual(
                 result,
                 {
-                    "path": ".",
-                    "pattern": "Jarvis",
                     "matches": [
                         {
                             "path": "nested/child.txt",
@@ -469,6 +579,10 @@ class SearchFilesToolTest(unittest.TestCase):
                             "line": "first Jarvis",
                         },
                     ],
+                    "has_more": False,
+                    "next_offset": None,
+                    "scanned_files": 2,
+                    "skipped_files": 0,
                 },
             )
 
@@ -487,6 +601,183 @@ class SearchFilesToolTest(unittest.TestCase):
             self.assertEqual(len(result["matches"]), 1)
             self.assertEqual(result["matches"][0]["line"], "item-12")
 
+    def test_supports_glob_case_insensitive_and_fixed_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            nested = workspace.path / "nested"
+            nested.mkdir()
+            (workspace.path / "root.py").write_text(
+                "value = 'JARVIS.'\n",
+                encoding="utf-8",
+            )
+            (nested / "child.py").write_text(
+                "value = 'jarvis.'\n",
+                encoding="utf-8",
+            )
+            (nested / "child.txt").write_text(
+                "value = 'jarvis.'\n",
+                encoding="utf-8",
+            )
+
+            result = SearchFilesTool(workspace).execute(
+                {
+                    "path": ".",
+                    "pattern": "jarvis.",
+                    "glob": "**/*.py",
+                    "case_insensitive": True,
+                    "fixed_strings": True,
+                }
+            )
+
+            self.assertEqual(
+                [match["path"] for match in result["matches"]],
+                ["nested/child.py", "root.py"],
+            )
+            self.assertEqual(result["scanned_files"], 2)
+
+    def test_paginates_matches_with_offset_and_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "\n".join(f"Jarvis {index}" for index in range(5)),
+                encoding="utf-8",
+            )
+            tool = SearchFilesTool(workspace)
+
+            first_page = tool.execute(
+                {
+                    "path": ".",
+                    "pattern": "Jarvis",
+                    "offset": 0,
+                    "limit": 2,
+                }
+            )
+            second_page = tool.execute(
+                {
+                    "path": ".",
+                    "pattern": "Jarvis",
+                    "offset": first_page["next_offset"],
+                    "limit": 2,
+                }
+            )
+
+            self.assertEqual(
+                [match["line_number"] for match in first_page["matches"]],
+                [1, 2],
+            )
+            self.assertTrue(first_page["has_more"])
+            self.assertEqual(first_page["next_offset"], 2)
+            self.assertEqual(
+                [match["line_number"] for match in second_page["matches"]],
+                [3, 4],
+            )
+            self.assertTrue(second_page["has_more"])
+            self.assertEqual(second_page["next_offset"], 4)
+
+    def test_defaults_to_at_most_200_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "\n".join("Jarvis" for _ in range(201)),
+                encoding="utf-8",
+            )
+
+            result = SearchFilesTool(workspace).execute(
+                {"path": ".", "pattern": "Jarvis"}
+            )
+
+            self.assertEqual(len(result["matches"]), 200)
+            self.assertTrue(result["has_more"])
+            self.assertEqual(result["next_offset"], 200)
+
+    def test_skips_common_dependency_and_build_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            for name in ("node_modules", ".venv", "build"):
+                excluded = workspace.path / name
+                excluded.mkdir()
+                (excluded / "match.txt").write_text(
+                    "Jarvis",
+                    encoding="utf-8",
+                )
+            (workspace.path / "match.txt").write_text(
+                "Jarvis",
+                encoding="utf-8",
+            )
+
+            result = SearchFilesTool(workspace).execute(
+                {"path": ".", "pattern": "Jarvis"}
+            )
+
+            self.assertEqual(
+                [match["path"] for match in result["matches"]],
+                ["match.txt"],
+            )
+            self.assertEqual(result["scanned_files"], 1)
+
+    def test_skips_files_larger_than_scan_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "large.txt").write_text(
+                "Jarvis",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "agent_core.tools.builtin.search_files."
+                "MAX_FILE_SIZE_BYTES",
+                3,
+            ):
+                result = SearchFilesTool(workspace).execute(
+                    {"path": ".", "pattern": "Jarvis"}
+                )
+
+            self.assertEqual(result["matches"], [])
+            self.assertEqual(result["scanned_files"], 0)
+            self.assertEqual(result["skipped_files"], 1)
+
+    def test_stops_traversal_at_path_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            for index in range(3):
+                (workspace.path / f"{index}.txt").write_text(
+                    "Jarvis",
+                    encoding="utf-8",
+                )
+
+            with patch(
+                "agent_core.tools.builtin.search_files."
+                "MAX_SCANNED_PATHS",
+                2,
+            ):
+                result = SearchFilesTool(workspace).execute(
+                    {"path": ".", "pattern": "Jarvis"}
+                )
+
+            self.assertTrue(result["has_more"])
+            self.assertEqual(result["next_offset"], 2)
+            self.assertEqual(result["scanned_files"], 2)
+
+    def test_limits_serialized_tool_result_size(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "notes.txt").write_text(
+                "Jarvis " + ("x" * (MAX_OUTPUT_CHARS * 2)),
+                encoding="utf-8",
+            )
+
+            result = SearchFilesTool(workspace).execute(
+                {"path": ".", "pattern": "Jarvis"}
+            )
+
+            content = ToolResult(
+                tool_call_id="call-1",
+                name="search_files",
+                output=result,
+            ).to_content()
+            self.assertLessEqual(len(content), MAX_OUTPUT_CHARS)
+            self.assertTrue(result["matches"][0]["line_truncated"])
+
     def test_skips_non_utf8_files_and_symlinks(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -503,6 +794,7 @@ class SearchFilesToolTest(unittest.TestCase):
             )
 
             self.assertEqual(result["matches"], [])
+            self.assertEqual(result["skipped_files"], 2)
 
     def test_rejects_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -533,6 +825,28 @@ class SearchFilesToolTest(unittest.TestCase):
 
             with self.assertRaisesRegex(Exception, "unterminated"):
                 tool.execute({"path": ".", "pattern": "["})
+
+    def test_validates_optional_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            tool = SearchFilesTool(Workspace(Path(directory)))
+
+            invalid_arguments = (
+                {"path": ".", "pattern": "x", "glob": ""},
+                {"path": ".", "pattern": "x", "offset": -1},
+                {"path": ".", "pattern": "x", "limit": 201},
+                {
+                    "path": ".",
+                    "pattern": "x",
+                    "case_insensitive": 1,
+                },
+                {"path": ".", "pattern": "x", "fixed_strings": 1},
+                {"path": ".", "pattern": "x", "unknown": True},
+            )
+
+            for arguments in invalid_arguments:
+                with self.subTest(arguments=arguments):
+                    with self.assertRaises(ValueError):
+                        tool.execute(arguments)
 
 
 class ShellToolTest(unittest.TestCase):
