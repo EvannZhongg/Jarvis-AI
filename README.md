@@ -5,30 +5,40 @@ React + assistant-ui 可视化界面。
 
 ## 安装
 
-需要 Python >= 3.11 与 Node.js >= 22。
+需要 Python >= 3.11 与 Node.js >= 22（Node 只在运行时需要）。
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install jarvis-agent
-```
-
-Windows 上激活同一虚拟环境使用 `.\.venv\Scripts\Activate.ps1`。
-
-从源码安装时需要先构建终端界面：
+先构建终端界面（构建产物 `interfaces/tui/dist/app.js` 不入库），再用
+[uv](https://docs.astral.sh/uv/) 把命令装到 PATH 上：
 
 ```bash
 npm install --prefix interfaces/tui
 npm run build --prefix interfaces/tui
-python -m pip install -e .
+uv tool install --editable ".[gui]"
 ```
+
+`uv tool install` 会为 Jarvis 建一个独立环境，把 `jarvis` 和 `jarvis-gui`
+放进 `~/.local/bin`（该目录不在 PATH 上时 uv 会提示需要执行的命令）。装完后
+在任意目录、任意新开的终端直接执行，不需要激活虚拟环境。`--editable` 表示
+直接使用本仓库源码，改完 `interfaces/tui` 后重新执行
+`npm run build --prefix interfaces/tui` 即可生效，不用重装。
+
+需要在仓库里跑测试时，仍可使用虚拟环境：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[gui]"
+```
+
+虚拟环境里的 `jarvis` 只在该环境激活后可用，且激活命令要写对：在仓库目录内用
+`.\.venv\Scripts\Activate.ps1`，在其他目录要用绝对路径（如
+`. C:\path\to\Jarvis-AI\.venv\Scripts\Activate.ps1`）。
 
 可视化界面是可选的，构建步骤见 [GUI](#gui)。
 
 ## 使用
 
-`jarvis` 是安装到虚拟环境 `Scripts` 目录下的命令，需要该环境处于激活状态
-（见[安装](#安装)），或把该 `Scripts` 目录加入 PATH。之后在任意目录下执行：
+按[安装](#安装)装好后，在任意目录下执行：
 
 ```bash
 jarvis
@@ -141,16 +151,9 @@ DEEPSEEK_KEY=your-api-key
 `.env`、`provider_config.json` 和 Session 数据不会提交到 Jarvis 仓库。
 Session 对话按 ID 保存在当前 Workspace 的 `sessions/`。
 
-从源码开发时可以使用可编辑安装：
-
-```bash
-python -m pip install -e .
-```
-
 ## 启动
 
-安装后会在虚拟环境的 `Scripts` 目录注册 `jarvis` 命令，激活该环境后即可使用。
-进入任意项目目录直接启动：
+按[安装](#安装)装好后，进入任意项目目录直接启动：
 
 ```bash
 cd ~/projects/my-project
@@ -199,6 +202,9 @@ npm install --prefix interfaces/gui
 npm run build --prefix interfaces/gui
 jarvis-gui
 ```
+
+用[安装](#安装)里的 `uv tool install` 方式装好时，Python 依赖已经就绪，
+只需要执行上面两条 `npm` 命令构建前端，然后直接运行 `jarvis-gui`。
 
 打开 <http://127.0.0.1:8000>。也可以指定工作目录和配置文件：
 
