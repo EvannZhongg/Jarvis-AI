@@ -17,8 +17,8 @@ from agent_core import (
 class JsonlSessionStoreTest(unittest.TestCase):
     def test_appends_complete_turn_items(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "sessions.jsonl"
-            store = JsonlSessionStore(path)
+            sessions_directory = Path(directory) / "sessions"
+            store = JsonlSessionStore(sessions_directory)
             request_time = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
             response_time = datetime(2026, 9, 9, 8, 1, tzinfo=timezone.utc)
             request = LLMRequest(
@@ -54,6 +54,7 @@ class JsonlSessionStoreTest(unittest.TestCase):
                 items,
             )
 
+            path = sessions_directory / "session-1.jsonl"
             record = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(record["session_id"], "session-1")
             self.assertEqual(
@@ -95,8 +96,8 @@ class JsonlSessionStoreTest(unittest.TestCase):
 
     def test_loads_session_with_tool_call_items(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "sessions.jsonl"
-            store = JsonlSessionStore(path)
+            sessions_directory = Path(directory) / "sessions"
+            store = JsonlSessionStore(sessions_directory)
             tool_call = ToolCall(
                 id="call-1",
                 name="read_file",
@@ -188,6 +189,28 @@ class JsonlSessionStoreTest(unittest.TestCase):
                 session.items,
                 [*first_items, *second_items],
             )
+            self.assertEqual(
+                sorted(path.name for path in sessions_directory.iterdir()),
+                ["session-1.jsonl", "session-2.jsonl"],
+            )
+
+    def test_loads_missing_session_without_creating_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            sessions_directory = Path(directory) / "sessions"
+            store = JsonlSessionStore(sessions_directory)
+
+            session = store.load("session-1")
+
+            self.assertEqual(session.session_id, "session-1")
+            self.assertEqual(session.items, [])
+            self.assertFalse(sessions_directory.exists())
+
+    def test_rejects_session_id_that_can_escape_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonlSessionStore(Path(directory) / "sessions")
+
+            with self.assertRaises(ValueError):
+                store.load("../session-1")
 
 
 if __name__ == "__main__":

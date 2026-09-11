@@ -4,10 +4,62 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_cli.config import ModelConfig, load_config
+from agent_cli.config import (
+    ModelConfig,
+    default_config_directory,
+    initialize_default_configs,
+    load_config,
+)
 
 
 class ConfigTest(unittest.TestCase):
+    def test_uses_home_for_default_directory(self) -> None:
+        with patch("agent_cli.config.Path.home") as home:
+            home.return_value = Path("/home/test")
+
+            self.assertEqual(
+                default_config_directory(),
+                Path("/home/test/.jarvis"),
+            )
+
+    def test_initializes_packaged_default_configs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config_directory = Path(directory) / "jarvis"
+
+            created = initialize_default_configs(config_directory)
+
+            self.assertEqual(
+                created,
+                (
+                    config_directory / "provider_config.json",
+                    config_directory / "agent_config.json",
+                ),
+            )
+            provider_config = json.loads(created[0].read_text(encoding="utf-8"))
+            agent_config = json.loads(created[1].read_text(encoding="utf-8"))
+            self.assertEqual(provider_config["provider"], "openai")
+            self.assertIn("openai", provider_config["providers"])
+            self.assertEqual(agent_config["max_same_tool_calls"], 5)
+            self.assertTrue(agent_config["tools"]["read_file"])
+
+    def test_initialization_does_not_overwrite_existing_config(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config_directory = Path(directory) / "jarvis"
+            config_directory.mkdir()
+            provider_path = config_directory / "provider_config.json"
+            provider_path.write_text("custom", encoding="utf-8")
+
+            created = initialize_default_configs(config_directory)
+
+            self.assertEqual(
+                created,
+                (config_directory / "agent_config.json",),
+            )
+            self.assertEqual(
+                provider_path.read_text(encoding="utf-8"),
+                "custom",
+            )
+
     def test_loads_selected_provider_from_json_and_env(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"

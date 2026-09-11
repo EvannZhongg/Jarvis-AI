@@ -41,6 +41,12 @@ class CliArgumentsTest(unittest.TestCase):
         self.assertIsNone(args.workspace)
         self.assertEqual(args.config, DEFAULT_CONFIG_PATH)
         self.assertEqual(args.agent_config, DEFAULT_AGENT_CONFIG_PATH)
+        self.assertFalse(args.init)
+
+    def test_accepts_init_flag(self) -> None:
+        args = parse_args(["--init"])
+
+        self.assertTrue(args.init)
 
     def test_accepts_explicit_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -83,7 +89,10 @@ class CliArgumentsTest(unittest.TestCase):
                         ),
                     ),
                 ),
-                patch("agent_cli.cli.JsonlSessionStore"),
+                patch("agent_cli.cli.initialize_default_configs"),
+                patch(
+                    "agent_cli.cli.JsonlSessionStore"
+                ) as session_store_class,
                 patch(
                     "agent_cli.cli.LiteLLMProvider"
                 ) as provider_class,
@@ -96,6 +105,9 @@ class CliArgumentsTest(unittest.TestCase):
             self.assertEqual(
                 agent_class.call_args.kwargs["workspace"],
                 Workspace(Path(directory)),
+            )
+            session_store_class.assert_called_once_with(
+                Workspace(Path(directory)).path / "sessions"
             )
             tools = agent_class.call_args.kwargs["tools"]
             self.assertIsInstance(tools[0], ReadFileTool)
@@ -149,6 +161,7 @@ class CliArgumentsTest(unittest.TestCase):
                         ),
                     ),
                 ),
+                patch("agent_cli.cli.initialize_default_configs"),
                 patch("agent_cli.cli.JsonlSessionStore"),
                 patch("agent_cli.cli.LiteLLMProvider"),
                 patch("agent_cli.cli.Agent") as agent_class,
@@ -161,6 +174,76 @@ class CliArgumentsTest(unittest.TestCase):
                 agent_class.call_args.kwargs["workspace"],
                 Workspace(Path(directory)),
             )
+
+    def test_custom_configs_do_not_initialize_default_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            directory_path = Path(directory)
+            provider_path = directory_path / "provider.json"
+            agent_path = directory_path / "agent.json"
+            with (
+                patch("agent_cli.cli.load_dotenv"),
+                patch(
+                    "agent_cli.cli.load_config",
+                    return_value=ModelConfig(
+                        model="test/model",
+                        url=None,
+                        key=None,
+                        max_context_tokens=1000,
+                    ),
+                ),
+                patch(
+                    "agent_cli.cli.load_agent_config",
+                    return_value=AgentConfig(
+                        max_same_tool_calls=5,
+                        max_output_tokens=100,
+                        tools=ToolConfig(enabled=frozenset()),
+                    ),
+                ),
+                patch(
+                    "agent_cli.cli.initialize_default_configs"
+                ) as initialize,
+                patch("agent_cli.cli.JsonlSessionStore"),
+                patch("agent_cli.cli.LiteLLMProvider"),
+                patch("agent_cli.cli.Agent"),
+                patch("builtins.input", return_value="quit"),
+                patch("builtins.print"),
+            ):
+                main(
+                    [
+                        "--config",
+                        str(provider_path),
+                        "--agent-config",
+                        str(agent_path),
+                    ]
+                )
+
+            initialize.assert_not_called()
+
+    def test_init_creates_configs_without_starting_agent(self) -> None:
+        created = (
+            DEFAULT_CONFIG_PATH,
+            DEFAULT_AGENT_CONFIG_PATH,
+        )
+        with (
+            patch(
+                "agent_cli.cli.initialize_default_configs",
+                return_value=created,
+            ) as initialize,
+            patch("agent_cli.cli.load_config") as load_config,
+            patch("builtins.print") as print_mock,
+        ):
+            main(["--init"])
+
+        initialize.assert_called_once_with(DEFAULT_CONFIG_PATH.parent)
+        load_config.assert_not_called()
+        self.assertEqual(
+            [call.args[0] for call in print_mock.call_args_list],
+            [
+                "Created configuration:",
+                f"  {DEFAULT_CONFIG_PATH}",
+                f"  {DEFAULT_AGENT_CONFIG_PATH}",
+            ],
+        )
 
 
 class CliEventRenderingTest(unittest.TestCase):

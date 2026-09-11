@@ -20,3 +20,4 @@ include = ["agent_core*", "agent_cli*"]
 
 [tool.setuptools.package-data]
 agent_core = ["prompts/*.md"]
+agent_cli = ["defaults/*.json"]

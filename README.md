@@ -5,19 +5,27 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install jarvis-agent
 ```
 
 ## 配置
 
-复制模型配置和密钥示例：
+安装后初始化配置：
 
 ```bash
-cp provider_config.example.json provider_config.json
-cp .env.example .env
+jarvis --init
 ```
 
-Agent 的全局行为配置位于 `agent_config.json`：
+默认会在 `~/.jarvis/` 下生成：
+
+```text
+~/.jarvis/
+├── provider_config.json
+└── agent_config.json
+```
+
+Agent 的全局行为配置位于
+`~/.jarvis/agent_config.json`：
 
 ```json
 {
@@ -46,7 +54,8 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
 `false` 时不注册。所有已支持的 Tool 都需要显式配置；未知 Tool 名称、
 缺少配置或使用非布尔值都会导致启动失败。
 
-在 `provider_config.json` 顶部通过 `provider` 选择当前使用的服务商。
+在 `~/.jarvis/provider_config.json` 顶部通过 `provider` 选择
+当前使用的服务商。
 每个服务商分别配置 LiteLLM 模型名、API URL 和密钥：
 
 ```json
@@ -67,8 +76,8 @@ Tool 定义）的 token 数。输入超过模型最大上下文减去
 上下文；省略时通过 LiteLLM 的模型元数据读取 `max_input_tokens`。如果
 LiteLLM 没有该模型的上下文元数据，则必须显式配置该字段。
 
-`key` 支持直接填写，也支持 `${ENV_NAME}` 形式从 `.env` 读取。推荐在
-`.env` 中保存密钥，例如：
+`key` 支持直接填写，也支持 `${ENV_NAME}` 形式从环境变量或配置目录下的
+`.env` 读取。例如：
 
 ```dotenv
 DEEPSEEK_KEY=your-api-key
@@ -76,7 +85,14 @@ DEEPSEEK_KEY=your-api-key
 
 只需要填写当前所选服务商使用的密钥。Ollama 等无密钥服务可以省略 `key`。
 
-`.env`、`provider_config.json` 和 Session 数据不会提交到版本控制。
+`.env`、`provider_config.json` 和 Session 数据不会提交到 Jarvis 仓库。
+Session 对话按 ID 保存在当前 Workspace 的 `sessions/`。
+
+从源码开发时可以使用可编辑安装：
+
+```bash
+python -m pip install -e .
+```
 
 ## 启动
 
@@ -193,11 +209,12 @@ LLMResponse(
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
-`sessions.jsonl`。
+`sessions/<SESSION_ID>.jsonl`。
 
-文件中每行都是一个完整 JSON 对象。恢复 Session 时直接读取 `items`，
-因此 Tool Call 和 Tool Result 也会进入后续模型上下文。CLI 将最终响应的
-UTC 时间转换成本机时区后显示：
+每个 Session 使用独立文件，文件中每行都是一个完整 JSON 对象。恢复
+Session 时只读取对应文件中的 `items`，因此 Tool Call 和 Tool Result
+也会进入后续模型上下文。CLI 将最终响应的 UTC 时间转换成本机时区后
+显示：
 
 `usage` 来自模型服务返回的 token 用量。如果服务商没有返回 usage，
 该字段记录为 `null`。

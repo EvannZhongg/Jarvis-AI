@@ -8,22 +8,22 @@ from .tools import ToolCall
 
 
 class JsonlSessionStore:
-    def __init__(self, path: Path) -> None:
-        self._path = path
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory
 
     def load(self, session_id: str) -> Session:
-        if not self._path.exists():
+        path = self._session_path(session_id)
+        if not path.exists():
             return Session(session_id=session_id)
 
         items = []
-        with self._path.open(encoding="utf-8") as file:
+        with path.open(encoding="utf-8") as file:
             for line in file:
                 record = json.loads(line)
-                if record["session_id"] == session_id:
-                    items.extend(
-                        _message_from_dict(item)
-                        for item in record["items"]
-                    )
+                items.extend(
+                    _message_from_dict(item)
+                    for item in record["items"]
+                )
 
         return Session(session_id=session_id, items=items)
 
@@ -79,8 +79,20 @@ class JsonlSessionStore:
                 }
                 for tool in request.tools
             ]
-        with self._path.open("a", encoding="utf-8") as file:
+        self._directory.mkdir(parents=True, exist_ok=True)
+        path = self._session_path(session_id)
+        with path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _session_path(self, session_id: str) -> Path:
+        if (
+            not session_id
+            or session_id in {".", ".."}
+            or "/" in session_id
+            or "\\" in session_id
+        ):
+            raise ValueError(f"Invalid session id: {session_id!r}")
+        return self._directory / f"{session_id}.jsonl"
 
 
 def _message_to_dict(message: Message) -> dict[str, object]:

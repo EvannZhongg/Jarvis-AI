@@ -24,13 +24,16 @@ from agent_core import (
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
 
-from .config import load_config
+from .config import (
+    default_config_directory,
+    initialize_default_configs,
+    load_config,
+)
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "provider_config.json"
-DEFAULT_AGENT_CONFIG_PATH = PROJECT_ROOT / "agent_config.json"
-DEFAULT_SESSION_STORE_PATH = PROJECT_ROOT / "sessions.jsonl"
+DEFAULT_CONFIG_DIRECTORY = default_config_directory()
+DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "provider_config.json"
+DEFAULT_AGENT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "agent_config.json"
 TIMESTAMP_PREFIX = re.compile(
     r"^\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s*"
 )
@@ -123,12 +126,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--session",
         help="Existing session id to resume. A new id is created when omitted.",
     )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Create default configuration files and exit.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    load_dotenv(PROJECT_ROOT / ".env")
+    if args.init:
+        created_configs = initialize_default_configs(DEFAULT_CONFIG_DIRECTORY)
+        _print_created_configs(created_configs)
+        if not created_configs:
+            print(f"Configuration already exists: {DEFAULT_CONFIG_DIRECTORY}")
+        return
+
+    if (
+        args.config == DEFAULT_CONFIG_PATH
+        or args.agent_config == DEFAULT_AGENT_CONFIG_PATH
+    ):
+        _print_created_configs(
+            initialize_default_configs(DEFAULT_CONFIG_DIRECTORY)
+        )
+
+    load_dotenv(args.config.parent / ".env")
 
     try:
         workspace = Workspace(args.workspace or Path.cwd())
@@ -137,7 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     except (OSError, ValueError) as error:
         raise SystemExit(f"Failed to start Jarvis: {error}") from error
 
-    store = JsonlSessionStore(DEFAULT_SESSION_STORE_PATH)
+    store = JsonlSessionStore(workspace.path / "sessions")
     session = store.load(args.session) if args.session else Session()
     command_executor = SubprocessCommandExecutor(workspace.path)
     agent = Agent(
@@ -181,3 +204,11 @@ def main(argv: list[str] | None = None) -> None:
             result.response,
             result.items,
         )
+
+
+def _print_created_configs(created_configs: tuple[Path, ...]) -> None:
+    if not created_configs:
+        return
+    print("Created configuration:")
+    for path in created_configs:
+        print(f"  {path}")

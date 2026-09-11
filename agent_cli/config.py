@@ -1,7 +1,14 @@
 import json
 import os
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
+
+
+DEFAULT_CONFIG_FILENAMES = (
+    "provider_config.json",
+    "agent_config.json",
+)
 
 
 @dataclass(frozen=True)
@@ -10,6 +17,26 @@ class ModelConfig:
     url: str | None
     key: str | None
     max_context_tokens: int | None = None
+
+
+def default_config_directory() -> Path:
+    return Path.home() / ".jarvis"
+
+
+def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
+    created = []
+    defaults = files("agent_cli.defaults")
+    for filename in DEFAULT_CONFIG_FILENAMES:
+        path = directory / filename
+        if path.exists():
+            continue
+        directory.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            defaults.joinpath(filename).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        created.append(path)
+    return tuple(created)
 
 
 def load_config(path: Path) -> ModelConfig:
