@@ -12,6 +12,7 @@ ENABLED_TOOLS = {
     "search_files": True,
     "list_directory": True,
     "shell": True,
+    "web_search": False,
 }
 
 
@@ -161,6 +162,25 @@ class AgentConfigTest(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "'tools'.*object"):
                 load_agent_config(path)
+
+    def test_defaults_missing_tools_to_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "agent_config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "max_same_tool_calls": 5,
+                        "max_output_tokens": 100,
+                        "tools": {"read_file": True},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                load_agent_config(path).tools,
+                ToolConfig(enabled=frozenset({"read_file"})),
+            )
 
     def test_rejects_non_boolean_tool_setting(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -7,6 +7,7 @@
     "edit_file": true,
     "search_files": true,
     "list_directory": true,
-    "shell": true
+    "shell": true,
+    "web_search": false
   }
 }

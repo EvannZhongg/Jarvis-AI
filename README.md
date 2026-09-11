@@ -19,7 +19,8 @@ uv tool install --editable ".[gui]"
 
 `uv tool install` 会为 Jarvis 建一个独立环境，把 `jarvis` 和 `jarvis-gui` 装到
 `~/.local/bin`（该目录不在 PATH 上时 uv 会提示需要执行的命令）；装完后在任意
-目录、任意新开的终端直接执行，不需要激活虚拟环境。
+目录、任意新开的终端直接执行，不需要激活虚拟环境。更新仓库代码后如果启动了新
+依赖，重新执行一次上面的 `uv tool install` 命令即可安装。
 
 Windows 上 `shell` Tool 需要 [Git for Windows](https://git-scm.com/download/win)
 提供的 Git Bash。命令统一在 POSIX shell 中执行（macOS/Linux 用 `/bin/sh`，
@@ -75,7 +76,8 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
     "edit_file": true,
     "search_files": true,
     "list_directory": true,
-    "shell": true
+    "shell": true,
+    "web_search": false
   }
 }
 ```
@@ -85,7 +87,7 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
 | `max_same_tool_calls` | 单轮内完全相同的 Tool Call 最多连续执行几次，超过即终止本轮 |
 | `max_output_tokens` | 每次回答预留的输出 token 数；输入超出模型上限减去该值时直接报错 |
 | `shell_timeout_seconds` | shell 默认超时，默认 60 秒、上限 900 秒；单次调用可用 `timeout_seconds` 指定更短值 |
-| `tools` | 内置 Tool 开关，需要显式配置全部 Tool；未知名称或非布尔值会导致启动失败 |
+| `tools` | 内置 Tool 开关：显式写 `true` 才启用，未写出的 Tool 保持关闭；未知名称或非布尔值会导致启动失败 |
 
 `provider_config.json` 顶部用 `provider` 选择当前服务商，`providers` 里为每个
 服务商配置 LiteLLM 模型名、API URL 和密钥：
@@ -116,7 +118,12 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
 
 ```dotenv
 DEEPSEEK_KEY=your-api-key
+EXA_API_KEY=your-api-key
 ```
+
+`EXA_API_KEY` 只在启用 `web_search` 时需要，在
+<https://exa.ai/products/search> 申请。缺这个密钥不影响启动和其余 Tool，只有
+`web_search` 调用会返回缺少密钥的错误。
 
 `.env`、`provider_config.json` 和 Session 数据都不会提交到仓库。
 
@@ -159,14 +166,18 @@ GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
 JSON 对象；超过回灌上限的完整 Tool Result 保存在同一目录的
 `<TOOL_CALL_ID>.txt`。用 `jarvis --session SESSION_ID` 恢复历史对话。
 
-内置 Tool 有 `read_file`、`edit_file`、`search_files`、`list_directory` 和
-`shell`：
+内置 Tool 有 `read_file`、`edit_file`、`search_files`、`list_directory`、
+`shell` 和 `web_search`：
 
 * 文件工具只接受 Workspace 内的相对路径。`search_files` 递归搜索 UTF-8 文本，
   默认跳过超大文件、非文本文件、`.git`/`node_modules`/`build` 等目录，以及指向
   Workspace 之外的链接。
 * `shell` 以 Workspace 为当前目录执行命令，每次执行前都需要人工确认，结果包含
   退出码、标准输出、标准错误、是否超时和实际超时秒数。
+* `web_search` 通过 [Exa](https://exa.ai) 检索公网内容，返回排序后的标题、URL、
+  发布日期和页面中最相关的片段；可以限制或排除域名，单次最多返回 10 条结果。
+  该 Tool 默认关闭，在 `agent_config.json` 里把它设为 `true` 后生效，并需要
+  `.env` 里的 `EXA_API_KEY`。
 * 回灌给模型的 Tool Result 不超过 16K chars；更大的结果转存为上面的 Session
   Artifact，模型只拿到路径、字符数和预览。
 

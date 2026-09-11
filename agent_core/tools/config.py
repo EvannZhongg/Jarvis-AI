@@ -7,6 +7,7 @@ TOOL_NAMES = (
     "search_files",
     "list_directory",
     "shell",
+    "web_search",
 )
 
 
@@ -29,7 +30,7 @@ def load_tool_config(data: object) -> ToolConfig:
 
     enabled = []
     for name in TOOL_NAMES:
-        value = data.get(name)
+        value = data.get(name, False)
         if not isinstance(value, bool):
             raise ValueError(
                 f"config field 'tools.{name}' must be a boolean"

@@ -40,6 +40,7 @@ from .tools import (
     ToolPolicy,
     ToolRegistry,
     ToolResult,
+    WebSearchTool,
     create_tools,
     load_tool_config,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "ToolResult",
     "ToolResultEvent",
     "ToolResultNormalizer",
+    "WebSearchTool",
     "Workspace",
     "create_tools",
     "load_agent_config",

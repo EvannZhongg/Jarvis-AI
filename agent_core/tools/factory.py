@@ -7,6 +7,7 @@ from .builtin import (
     ReadFileTool,
     SearchFilesTool,
     ShellTool,
+    WebSearchTool,
 )
 from .config import ToolConfig
 
@@ -34,5 +35,7 @@ def create_tools(
                 default_timeout_seconds=shell_timeout_seconds,
             )
         )
+    if config.is_enabled("web_search"):
+        tools.append(WebSearchTool())
 
     return tuple(tools)

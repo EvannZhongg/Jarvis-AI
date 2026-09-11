@@ -14,6 +14,7 @@ from .builtin import (
     ReadFileTool,
     SearchFilesTool,
     ShellTool,
+    WebSearchTool,
 )
 from .config import ToolConfig, load_tool_config
 from .factory import create_tools
@@ -35,6 +36,7 @@ __all__ = [
     "ToolPolicy",
     "ToolRegistry",
     "ToolResult",
+    "WebSearchTool",
     "create_tools",
     "load_tool_config",
 ]

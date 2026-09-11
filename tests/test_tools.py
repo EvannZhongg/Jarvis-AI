@@ -4,6 +4,7 @@ import subprocess
 import unittest
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent_core import (
@@ -20,6 +21,7 @@ from agent_core import (
     ToolDefinition,
     ToolRegistry,
     ToolResult,
+    WebSearchTool,
     Workspace,
     create_tools,
 )
@@ -149,6 +151,171 @@ class ToolFactoryTest(unittest.TestCase):
             [tool.definition.name for tool in tools],
             ["read_file", "list_directory"],
         )
+
+    def test_creates_enabled_web_search_tool(self) -> None:
+        class UnusedExecutor:
+            def execute(self, command, timeout_seconds=60):
+                raise AssertionError("executor should not be called")
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = create_tools(
+                ToolConfig(enabled=frozenset({"web_search"})),
+                Workspace(Path(directory)),
+                UnusedExecutor(),
+            )
+
+        self.assertEqual(
+            [tool.definition.name for tool in tools],
+            ["web_search"],
+        )
+
+
+class FakeExa:
+    def __init__(self) -> None:
+        self.calls = []
+        self.results = [
+            SimpleNamespace(
+                title="Exa API",
+                url="https://docs.exa.ai/reference/search",
+                published_date="2025-01-02",
+                highlights=["Search the web", "Returns ranked results"],
+            ),
+            SimpleNamespace(
+                title="Exa",
+                url="https://exa.ai",
+                published_date=None,
+                highlights=None,
+            ),
+        ]
+
+    def search(self, query, **options):
+        self.calls.append({"query": query, **options})
+        return SimpleNamespace(results=self.results)
+
+
+class WebSearchToolTest(unittest.TestCase):
+    def test_returns_ranked_results_with_highlights(self) -> None:
+        client = FakeExa()
+        tool = WebSearchTool()
+
+        with patch(
+            "agent_core.tools.builtin.web_search.Exa",
+            return_value=client,
+        ) as exa:
+            result = tool.execute({"query": "exa search api"})
+
+        exa.assert_called_once_with()
+        self.assertEqual(
+            client.calls,
+            [
+                {
+                    "query": "exa search api",
+                    "type": "auto",
+                    "num_results": 5,
+                    "include_domains": None,
+                    "exclude_domains": None,
+                    "contents": {
+                        "highlights": {"max_characters": 1000}
+                    },
+                }
+            ],
+        )
+        self.assertEqual(
+            result,
+            {
+                "query": "exa search api",
+                "results": [
+                    {
+                        "title": "Exa API",
+                        "url": "https://docs.exa.ai/reference/search",
+                        "published_date": "2025-01-02",
+                        "highlights": [
+                            "Search the web",
+                            "Returns ranked results",
+                        ],
+                    },
+                    {
+                        "title": "Exa",
+                        "url": "https://exa.ai",
+                        "published_date": None,
+                        "highlights": None,
+                    },
+                ],
+            },
+        )
+
+    def test_passes_result_limit_and_domain_filters(self) -> None:
+        client = FakeExa()
+        tool = WebSearchTool()
+
+        with patch(
+            "agent_core.tools.builtin.web_search.Exa",
+            return_value=client,
+        ):
+            tool.execute(
+                {
+                    "query": "pytest fixtures",
+                    "num_results": 3,
+                    "include_domains": ["docs.pytest.org"],
+                    "exclude_domains": ["medium.com"],
+                }
+            )
+
+        self.assertEqual(
+            client.calls,
+            [
+                {
+                    "query": "pytest fixtures",
+                    "type": "auto",
+                    "num_results": 3,
+                    "include_domains": ["docs.pytest.org"],
+                    "exclude_domains": ["medium.com"],
+                    "contents": {
+                        "highlights": {"max_characters": 1000}
+                    },
+                }
+            ],
+        )
+
+    def test_missing_api_key_fails_the_call_not_the_tool(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            tool = WebSearchTool()
+
+            with self.assertRaisesRegex(ValueError, "EXA_API_KEY"):
+                tool.execute({"query": "exa"})
+
+    def test_rejects_invalid_arguments(self) -> None:
+        tool = WebSearchTool()
+
+        with patch(
+            "agent_core.tools.builtin.web_search.Exa",
+            return_value=FakeExa(),
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "non-empty string 'query'",
+            ):
+                tool.execute({})
+            with self.assertRaisesRegex(
+                ValueError,
+                "non-empty string 'query'",
+            ):
+                tool.execute({"query": ""})
+            for num_results in (0, 11, True, "3"):
+                with self.subTest(num_results=num_results):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "between 1 and 10",
+                    ):
+                        tool.execute(
+                            {"query": "exa", "num_results": num_results}
+                        )
+            with self.assertRaisesRegex(ValueError, "non-empty array"):
+                tool.execute({"query": "exa", "include_domains": []})
+            with self.assertRaisesRegex(ValueError, "non-empty strings"):
+                tool.execute({"query": "exa", "exclude_domains": [""]})
+            with self.assertRaisesRegex(ValueError, "accepts only"):
+                tool.execute({"query": "exa", "extra": True})
 
 
 class ReadFileToolTest(unittest.TestCase):
