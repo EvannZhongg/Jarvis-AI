@@ -1,3 +1,4 @@
+import locale
 import os
 import signal
 import subprocess
@@ -56,8 +57,6 @@ class SubprocessCommandExecutor:
             cwd=self._working_directory,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
             start_new_session=True,
         )
         timed_out = False
@@ -65,16 +64,19 @@ class SubprocessCommandExecutor:
             stdout, stderr = process.communicate(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             timed_out = True
-            os.killpg(process.pid, signal.SIGKILL)
+            _kill_process_tree(process)
             stdout, stderr = process.communicate()
         except BaseException:
             # The command runs in its own process group, so an interrupted
             # wait would otherwise leave it running detached.
-            os.killpg(process.pid, signal.SIGKILL)
+            _kill_process_tree(process)
             process.wait()
             raise
 
-        stdout, stderr = _limit_output(stdout, stderr)
+        stdout, stderr = _limit_output(
+            _decode_output(stdout),
+            _decode_output(stderr),
+        )
         return CommandExecutionResult(
             command=command,
             exit_code=process.returncode,
@@ -82,6 +84,42 @@ class SubprocessCommandExecutor:
             stderr=stderr,
             timed_out=timed_out,
             timeout_seconds=timeout_seconds,
+        )
+
+
+def _kill_process_tree(process: subprocess.Popen[bytes]) -> None:
+    """Kill the command together with the processes it started.
+
+    os.killpg is POSIX-only, and on Windows killing the shell alone
+    leaves the children it spawned holding the output pipes open.
+    """
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return
+
+    os.killpg(process.pid, signal.SIGKILL)
+
+
+def _decode_output(data: bytes | None) -> str:
+    """Turn captured output bytes into text.
+
+    Programs on Windows write in the console or ANSI code page rather
+    than UTF-8, and a stream that fails to decode is reported to the
+    caller as None by subprocess.
+    """
+    if not data:
+        return ""
+
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode(
+            locale.getpreferredencoding(False),
+            errors="replace",
         )
 
 

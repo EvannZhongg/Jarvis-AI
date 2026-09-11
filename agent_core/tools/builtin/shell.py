@@ -1,3 +1,4 @@
+import os
 from dataclasses import asdict
 
 from ...execution import (
@@ -6,6 +7,30 @@ from ...execution import (
     CommandExecutor,
 )
 from ..base import JSONValue, Tool, ToolDefinition
+
+
+WINDOWS_SHELL_NOTE = (
+    "Commands run through cmd.exe, so use Windows syntax: chain commands "
+    "with '&&', use Windows paths, and avoid POSIX-only constructs such "
+    "as ';', '$VAR', 'cat', 'env' and '/tmp'."
+)
+POSIX_SHELL_NOTE = (
+    "Commands run through /bin/sh, so use POSIX syntax: chain commands "
+    "with '&&' and avoid Windows-only constructs."
+)
+
+
+def _describe(default_timeout_seconds: int) -> str:
+    shell_note = (
+        WINDOWS_SHELL_NOTE if os.name == "nt" else POSIX_SHELL_NOTE
+    )
+    return (
+        "Execute a shell command with the workspace as the current "
+        f"directory. {shell_note} Every call starts a fresh shell, so "
+        "directory and environment changes do not persist. The command is "
+        f"killed after {default_timeout_seconds} seconds, and its exit "
+        "code, stdout and stderr are returned."
+    )
 
 
 class ShellTool(Tool):
@@ -31,7 +56,7 @@ class ShellTool(Tool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="shell",
-            description="Execute a shell command in the workspace.",
+            description=_describe(self._default_timeout_seconds),
             parameters={
                 "type": "object",
                 "properties": {
@@ -45,10 +70,11 @@ class ShellTool(Tool):
                     "timeout_seconds": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": MAX_COMMAND_TIMEOUT_SECONDS,
+                        "maximum": self._default_timeout_seconds,
                         "description": (
-                            "Optional timeout shorter than or equal to the "
-                            "configured default timeout."
+                            "Optional timeout in seconds, at most the "
+                            "configured default of "
+                            f"{self._default_timeout_seconds}."
                         ),
                     },
                 },

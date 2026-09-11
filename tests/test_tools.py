@@ -921,6 +921,25 @@ class ShellToolTest(unittest.TestCase):
         ):
             tool.execute({"command": "pwd", "timeout_seconds": 61})
 
+    def test_advertises_the_shell_and_timeout_it_uses(self) -> None:
+        class UnusedExecutor:
+            def execute(self, command, timeout_seconds=60):
+                raise AssertionError("executor should not be called")
+
+        tool = ShellTool(UnusedExecutor(), default_timeout_seconds=90)
+
+        definition = tool.definition
+        timeout_schema = definition.parameters["properties"][
+            "timeout_seconds"
+        ]
+
+        self.assertEqual(timeout_schema["maximum"], 90)
+        self.assertIn("90 seconds", definition.description)
+        self.assertIn(
+            "cmd.exe" if os.name == "nt" else "/bin/sh",
+            definition.description,
+        )
+
     def test_validates_arguments(self) -> None:
         class UnusedExecutor:
             def execute(self, command, timeout_seconds=60):
