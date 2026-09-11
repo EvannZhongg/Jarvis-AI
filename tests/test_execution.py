@@ -1,4 +1,3 @@
-import os
 import sys
 import tempfile
 import time
@@ -12,63 +11,51 @@ from agent_core.execution import (
 )
 
 
-WINDOWS = os.name == "nt"
-
-
 def _python_script_command(working_directory: Path, script: str) -> str:
     """Write a helper script into the workspace and run it by name.
 
     Running a script file keeps the command line free of the quoting that
-    differs between cmd.exe and /bin/sh.
+    differs between shells.
     """
     (working_directory / "command.py").write_text(script, encoding="utf-8")
     return f'"{sys.executable}" command.py'
 
 
 class SubprocessCommandExecutorTest(unittest.TestCase):
+    # Commands below use POSIX syntax on purpose: the shell is /bin/sh on
+    # macOS and Linux, and Git Bash on Windows.
     def test_executes_command_in_working_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             working_directory = Path(directory)
             executor = SubprocessCommandExecutor(working_directory)
-            if WINDOWS:
-                command = (
-                    "echo hello & echo warning 1>&2 & "
-                    "echo marker> command-output.txt"
-                )
-            else:
-                command = (
-                    "printf 'hello'; "
-                    "printf 'warning' >&2; "
-                    "printf 'marker' > command-output.txt"
-                )
 
-            result = executor.execute(command)
+            result = executor.execute(
+                "printf 'hello'; "
+                "printf 'warning' >&2; "
+                "printf 'marker' > command-output.txt"
+            )
 
             self.assertEqual(result.exit_code, 0)
-            self.assertEqual(result.stdout.strip(), "hello")
-            self.assertEqual(result.stderr.strip(), "warning")
+            self.assertEqual(result.stdout, "hello")
+            self.assertEqual(result.stderr, "warning")
             self.assertFalse(result.timed_out)
             self.assertEqual(result.timeout_seconds, 60)
             self.assertEqual(
-                (working_directory / "command-output.txt")
-                .read_text(encoding="utf-8")
-                .strip(),
+                (working_directory / "command-output.txt").read_text(
+                    encoding="utf-8"
+                ),
                 "marker",
             )
 
     def test_returns_nonzero_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             executor = SubprocessCommandExecutor(Path(directory))
-            if WINDOWS:
-                command = "echo failed 1>&2 & exit 7"
-            else:
-                command = "printf 'failed' >&2; exit 7"
 
-            result = executor.execute(command)
+            result = executor.execute("printf 'failed' >&2; exit 7")
 
             self.assertEqual(result.exit_code, 7)
             self.assertEqual(result.stdout, "")
-            self.assertEqual(result.stderr.strip(), "failed")
+            self.assertEqual(result.stderr, "failed")
 
     def test_times_out_and_kills_the_command_tree(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

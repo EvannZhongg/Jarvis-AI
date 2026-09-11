@@ -22,6 +22,24 @@ except ModuleNotFoundError:  # pragma: no cover - exercised without [gui]
     TestClient = None
 
 
+def _symlinks_available() -> bool:
+    """Report whether this account may create symlinks.
+
+    Windows needs Developer Mode or administrator rights.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        target = Path(directory, "target.txt")
+        target.write_text("x", encoding="utf-8")
+        try:
+            Path(directory, "link.txt").symlink_to(target)
+        except OSError:
+            return False
+    return True
+
+
+SYMLINKS_AVAILABLE = _symlinks_available()
+
+
 class FakeBridge:
     """Stands in for the bridge child process.
 
@@ -309,19 +327,41 @@ class GuiTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    def test_workspace_listing_rejects_traversal_and_external_symlinks(
-        self,
-    ) -> None:
-        (self.root / "outside").symlink_to(self.root.parent)
+    def test_workspace_listing_rejects_traversal(self) -> None:
         with self.client() as client:
             listing = client.get("/api/workspace").json()
             self.assertEqual(listing["root"], str(self.root.resolve()))
-            self.assertIn({"name": "src", "type": "directory"}, listing["entries"])
-            for path in ("..", "/tmp", "outside"):
+            self.assertIn(
+                {"name": "src", "type": "directory"},
+                listing["entries"],
+            )
+            for path in ("..", "/tmp"):
                 self.assertEqual(
-                    client.get("/api/workspace", params={"path": path}).status_code,
+                    client.get(
+                        "/api/workspace",
+                        params={"path": path},
+                    ).status_code,
                     400,
                 )
+
+    @unittest.skipUnless(
+        SYMLINKS_AVAILABLE,
+        "creating symlinks needs Developer Mode or administrator rights "
+        "on Windows",
+    )
+    def test_workspace_listing_rejects_external_symlinks(self) -> None:
+        (self.root / "outside").symlink_to(
+            self.root.parent,
+            target_is_directory=True,
+        )
+        with self.client() as client:
+            self.assertEqual(
+                client.get(
+                    "/api/workspace",
+                    params={"path": "outside"},
+                ).status_code,
+                400,
+            )
 
     def test_rejects_foreign_origins_and_hosts(self) -> None:
         with self.client(FakeBridge()) as client:

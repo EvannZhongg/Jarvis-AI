@@ -39,9 +39,10 @@ class WorkspaceTest(unittest.TestCase):
     def test_rejects_absolute_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
+            outside = Path(directory).parent / "outside.txt"
 
             with self.assertRaisesRegex(ValueError, "must be relative"):
-                workspace.resolve_path("/tmp/outside.txt")
+                workspace.resolve_path(str(outside))
 
     def test_rejects_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

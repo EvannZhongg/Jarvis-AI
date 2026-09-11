@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import unittest
 import tempfile
 from pathlib import Path
@@ -27,6 +28,24 @@ from agent_core.tools.builtin.read_file import (
     MAX_FILE_SIZE_BYTES as MAX_READ_FILE_SIZE_BYTES,
     MAX_READ_CHARS,
 )
+
+
+def _symlinks_available() -> bool:
+    """Report whether this account may create symlinks.
+
+    Windows needs Developer Mode or administrator rights.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        target = Path(directory, "target.txt")
+        target.write_text("x", encoding="utf-8")
+        try:
+            Path(directory, "link.txt").symlink_to(target)
+        except OSError:
+            return False
+    return True
+
+
+SYMLINKS_AVAILABLE = _symlinks_available()
 
 
 class FailingTool(Tool):
@@ -139,6 +158,7 @@ class ReadFileToolTest(unittest.TestCase):
             (workspace.path / "notes.txt").write_text(
                 "你好，Jarvis。\n第二行\n",
                 encoding="utf-8",
+                newline="\n",
             )
 
             result = ReadFileTool(workspace).execute({"path": "notes.txt"})
@@ -164,6 +184,7 @@ class ReadFileToolTest(unittest.TestCase):
             (workspace.path / "notes.txt").write_text(
                 "\n".join(f"line {number}" for number in range(1, 6)),
                 encoding="utf-8",
+                newline="\n",
             )
 
             result = ReadFileTool(workspace).execute(
@@ -360,6 +381,11 @@ class ReadFileToolTest(unittest.TestCase):
             ):
                 ReadFileTool(workspace).execute({"path": "../outside.txt"})
 
+    @unittest.skipUnless(
+        SYMLINKS_AVAILABLE,
+        "creating symlinks needs Developer Mode or administrator rights "
+        "on Windows",
+    )
     def test_rejects_symlink_to_file_outside_workspace(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -504,6 +530,29 @@ class ListDirectoryToolTest(unittest.TestCase):
             workspace = Workspace(Path(directory))
             (workspace.path / "z.txt").write_text("z", encoding="utf-8")
             (workspace.path / "a").mkdir()
+
+            result = ListDirectoryTool(workspace).execute({"path": "."})
+
+            self.assertEqual(
+                result,
+                {
+                    "path": ".",
+                    "entries": [
+                        {"name": "a", "type": "directory"},
+                        {"name": "z.txt", "type": "file"},
+                    ],
+                },
+            )
+
+    @unittest.skipUnless(
+        SYMLINKS_AVAILABLE,
+        "creating symlinks needs Developer Mode or administrator rights "
+        "on Windows",
+    )
+    def test_reports_symlink_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "z.txt").write_text("z", encoding="utf-8")
             os.symlink(
                 workspace.path / "z.txt",
                 workspace.path / "link.txt",
@@ -516,7 +565,6 @@ class ListDirectoryToolTest(unittest.TestCase):
                 {
                     "path": ".",
                     "entries": [
-                        {"name": "a", "type": "directory"},
                         {"name": "link.txt", "type": "symlink"},
                         {"name": "z.txt", "type": "file"},
                     ],
@@ -778,13 +826,29 @@ class SearchFilesToolTest(unittest.TestCase):
             self.assertLessEqual(len(content), MAX_OUTPUT_CHARS)
             self.assertTrue(result["matches"][0]["line_truncated"])
 
-    def test_skips_non_utf8_files_and_symlinks(self) -> None:
+    def test_skips_non_utf8_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            (workspace.path / "binary.bin").write_bytes(b"\xffJarvis")
+
+            result = SearchFilesTool(workspace).execute(
+                {"path": ".", "pattern": "Jarvis"}
+            )
+
+            self.assertEqual(result["matches"], [])
+            self.assertEqual(result["skipped_files"], 1)
+
+    @unittest.skipUnless(
+        SYMLINKS_AVAILABLE,
+        "creating symlinks needs Developer Mode or administrator rights "
+        "on Windows",
+    )
+    def test_skips_symlinks_to_files_outside_workspace(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,
             tempfile.TemporaryDirectory() as outside_directory,
         ):
             workspace = Workspace(Path(directory))
-            (workspace.path / "binary.bin").write_bytes(b"\xffJarvis")
             outside_file = Path(outside_directory) / "outside.txt"
             outside_file.write_text("Jarvis", encoding="utf-8")
             os.symlink(outside_file, workspace.path / "link.txt")
@@ -794,7 +858,39 @@ class SearchFilesToolTest(unittest.TestCase):
             )
 
             self.assertEqual(result["matches"], [])
-            self.assertEqual(result["skipped_files"], 2)
+            self.assertEqual(result["skipped_files"], 1)
+
+    @unittest.skipUnless(
+        os.name == "nt",
+        "directory junctions are a Windows feature",
+    )
+    def test_skips_junctions_to_directories_outside_workspace(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            tempfile.TemporaryDirectory() as outside_directory,
+        ):
+            workspace = Workspace(Path(directory))
+            outside_file = Path(outside_directory) / "outside.txt"
+            outside_file.write_text("Jarvis", encoding="utf-8")
+            subprocess.run(
+                [
+                    "cmd",
+                    "/c",
+                    "mklink",
+                    "/J",
+                    str(workspace.path / "link"),
+                    outside_directory,
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            result = SearchFilesTool(workspace).execute(
+                {"path": ".", "pattern": "Jarvis"}
+            )
+
+            self.assertEqual(result["matches"], [])
+            self.assertEqual(result["skipped_files"], 1)
 
     def test_rejects_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -936,7 +1032,7 @@ class ShellToolTest(unittest.TestCase):
         self.assertEqual(timeout_schema["maximum"], 90)
         self.assertIn("90 seconds", definition.description)
         self.assertIn(
-            "cmd.exe" if os.name == "nt" else "/bin/sh",
+            "Git Bash" if os.name == "nt" else "/bin/sh",
             definition.description,
         )
 

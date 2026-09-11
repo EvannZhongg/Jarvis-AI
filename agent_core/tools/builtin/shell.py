@@ -10,13 +10,13 @@ from ..base import JSONValue, Tool, ToolDefinition
 
 
 WINDOWS_SHELL_NOTE = (
-    "Commands run through cmd.exe, so use Windows syntax: chain commands "
-    "with '&&', use Windows paths, and avoid POSIX-only constructs such "
-    "as ';', '$VAR', 'cat', 'env' and '/tmp'."
+    "Commands run through Git Bash, so use POSIX shell syntax: chain "
+    "commands with ';' or '&&', and tools such as cat, grep, sed and "
+    "printf are available."
 )
 POSIX_SHELL_NOTE = (
-    "Commands run through /bin/sh, so use POSIX syntax: chain commands "
-    "with '&&' and avoid Windows-only constructs."
+    "Commands run through /bin/sh, so use POSIX shell syntax: chain "
+    "commands with ';' or '&&'."
 )
 
 

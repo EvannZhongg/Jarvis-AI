@@ -1,5 +1,6 @@
 import locale
 import os
+import shutil
 import signal
 import subprocess
 from dataclasses import dataclass
@@ -52,9 +53,10 @@ class SubprocessCommandExecutor:
             )
 
         process = subprocess.Popen(
-            command,
-            shell=True,
+            _shell_argv(command),
             cwd=self._working_directory,
+            # Commands must never read the stream the UI protocol uses.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
@@ -85,6 +87,61 @@ class SubprocessCommandExecutor:
             timed_out=timed_out,
             timeout_seconds=timeout_seconds,
         )
+
+
+def _shell_argv(command: str) -> list[str]:
+    """Build the argv that runs *command* in a POSIX shell.
+
+    macOS and Linux provide one at /bin/sh. Windows does not, so Git
+    Bash is used there to keep command syntax identical everywhere.
+    """
+    if os.name == "nt":
+        return [_git_bash(), "--noprofile", "--norc", "-c", command]
+
+    return ["/bin/sh", "-c", command]
+
+
+def _git_bash() -> str:
+    """Locate the Git Bash shipped with Git for Windows.
+
+    The bash.exe in System32 launches WSL, which runs in a different
+    filesystem and cannot see the workspace.
+    """
+    candidates = [shutil.which("bash")]
+    program_files = os.environ.get("ProgramFiles")
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if program_files:
+        git_root = Path(program_files) / "Git"
+        candidates += [
+            str(git_root / "bin" / "bash.exe"),
+            str(git_root / "usr" / "bin" / "bash.exe"),
+        ]
+    if local_app_data:
+        candidates.append(
+            str(Path(local_app_data, "Programs", "Git", "bin", "bash.exe"))
+        )
+
+    for candidate in candidates:
+        if (
+            candidate is not None
+            and Path(candidate).is_file()
+            and not _is_wsl_bash(candidate)
+        ):
+            return candidate
+
+    raise RuntimeError(
+        "shell requires Git Bash on Windows; install Git for Windows from "
+        "https://git-scm.com/download/win"
+    )
+
+
+def _is_wsl_bash(path: str) -> bool:
+    """Report whether *path* is the WSL launcher in System32."""
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    wsl_launcher = Path(system_root) / "System32" / "bash.exe"
+    return os.path.normcase(str(Path(path).resolve())) == os.path.normcase(
+        str(wsl_launcher.resolve())
+    )
 
 
 def _kill_process_tree(process: subprocess.Popen[bytes]) -> None:

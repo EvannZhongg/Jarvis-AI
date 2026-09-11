@@ -7,6 +7,10 @@ React + assistant-ui 可视化界面。
 
 需要 Python >= 3.11 与 Node.js >= 22（Node 只在运行时需要）。
 
+Windows 上 `shell` Tool 需要 [Git for Windows](https://git-scm.com/download/win)
+提供的 Git Bash：命令统一在 POSIX shell 中执行（macOS/Linux 用 `/bin/sh`，
+Windows 用 Git Bash），未找到 Git Bash 时 `shell` 会返回安装提示。
+
 先构建终端界面（构建产物 `interfaces/tui/dist/app.js` 不入库），再用
 [uv](https://docs.astral.sh/uv/) 把命令装到 PATH 上：
 
@@ -289,8 +293,11 @@ CommandExecutor
 ```
 
 `ShellTool` 只负责参数校验和结果结构化，默认的
-`SubprocessCommandExecutor` 负责在指定工作目录启动独立子进程组。命令
-超时后会终止整个子进程组，而不是只终止 shell 父进程。`stdout` 与
+`SubprocessCommandExecutor` 负责在指定工作目录启动独立子进程组。命令统一
+在 POSIX shell 中执行：macOS/Linux 用 `/bin/sh`，Windows 用 Git Bash，因此
+命令写法在各平台一致。子进程不继承 stdin，命令无法读取界面协议流；输出先按
+UTF-8 解码，失败时回退到系统 ANSI 代码页。命令超时后会终止整个子进程组，
+而不是只终止 shell 父进程。`stdout` 与
 `stderr` 分别最多保留 50K chars；每个输出流超过限制时保留开头和结尾，
 并在中间标注该输出流被截断的字符数量。执行结果包含 `timed_out` 和实际采用的
 `timeout_seconds`。后续接入沙箱执行后端时，不需要把进程管理逻辑重新

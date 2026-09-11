@@ -309,7 +309,10 @@ def _collect_files(
             scanned_paths += 1
 
             relative_path = entry.relative_to(directory_path)
-            if entry.is_symlink():
+            if entry.is_symlink() or _escapes_search_root(
+                entry,
+                directory_path,
+            ):
                 if _matches_glob(relative_path, glob):
                     skipped_files += 1
                 continue
@@ -327,6 +330,15 @@ def _collect_files(
         skipped_files,
         False,
     )
+
+
+def _escapes_search_root(entry: Path, search_root: Path) -> bool:
+    """Report whether *entry* resolves to something outside the search root.
+
+    Directory junctions on Windows are reparse points that are not
+    symlinks, so the entry has to be resolved to catch them.
+    """
+    return not entry.resolve().is_relative_to(search_root)
 
 
 def _matches_glob(path: Path, pattern: str) -> bool:
