@@ -12,7 +12,7 @@ from agent_cli.cli import (
     print_agent_event,
     request_shell_permission,
 )
-from agent_cli.config import ModelConfig
+from agent_core.providers.config import ModelConfig
 from agent_core import (
     AgentConfig,
     AssistantMessageEvent,

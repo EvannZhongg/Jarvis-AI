@@ -1,8 +1,37 @@
 import json
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 
 from .tools.config import ToolConfig, load_tool_config
+
+
+DEFAULT_CONFIG_FILENAMES = ("provider_config.json", "agent_config.json")
+
+
+def default_config_directory() -> Path:
+    return Path.home() / ".jarvis"
+
+
+DEFAULT_CONFIG_DIRECTORY = default_config_directory()
+DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "provider_config.json"
+DEFAULT_AGENT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "agent_config.json"
+
+
+def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
+    created = []
+    defaults = files("agent_core.defaults")
+    for filename in DEFAULT_CONFIG_FILENAMES:
+        path = directory / filename
+        if path.exists():
+            continue
+        directory.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            defaults.joinpath(filename).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        created.append(path)
+    return tuple(created)
 
 
 @dataclass(frozen=True)

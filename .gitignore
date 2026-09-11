@@ -10,3 +10,5 @@ build/
 /sessions/
 CubeSandbox/
 nanobot/
+gui/node_modules/
+agent_gui/static/

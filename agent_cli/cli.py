@@ -24,16 +24,15 @@ from agent_core import (
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
 
-from .config import (
-    default_config_directory,
+from agent_core.config import (
+    DEFAULT_AGENT_CONFIG_PATH,
+    DEFAULT_CONFIG_DIRECTORY,
+    DEFAULT_CONFIG_PATH,
     initialize_default_configs,
-    load_config,
 )
+from agent_core.providers.config import load_config
 
 
-DEFAULT_CONFIG_DIRECTORY = default_config_directory()
-DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "provider_config.json"
-DEFAULT_AGENT_CONFIG_PATH = DEFAULT_CONFIG_DIRECTORY / "agent_config.json"
 TIMESTAMP_PREFIX = re.compile(
     r"^\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s*"
 )

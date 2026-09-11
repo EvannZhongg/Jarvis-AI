@@ -4,17 +4,37 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_cli.config import (
-    ModelConfig,
-    default_config_directory,
-    initialize_default_configs,
-    load_config,
-)
+from agent_core.config import default_config_directory, initialize_default_configs
+from agent_core.providers.config import ModelConfig, load_config, load_model_options
 
 
 class ConfigTest(unittest.TestCase):
+    def test_lists_models_without_resolving_keys_and_loads_explicit_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            content = json.dumps({
+                "provider": "first",
+                "providers": {
+                    "first": {"model": "openai/first", "key": "${FIRST_KEY}"},
+                    "second": {"model": "openai/second", "key": "${SECOND_KEY}"},
+                },
+            })
+            path.write_text(content, encoding="utf-8")
+            with patch.dict("os.environ", {"SECOND_KEY": "secret"}, clear=True):
+                self.assertEqual(load_model_options(path), (
+                    "first", {"first": "openai/first", "second": "openai/second"},
+                ))
+                selected = load_config(path, provider="second")
+                self.assertEqual(selected.model, "openai/second")
+                self.assertEqual(selected.key, "secret")
+                with self.assertRaisesRegex(ValueError, "FIRST_KEY"):
+                    load_config(path)
+                with self.assertRaisesRegex(ValueError, "not configured"):
+                    load_config(path, provider="unknown")
+            self.assertEqual(path.read_text(encoding="utf-8"), content)
+
     def test_uses_home_for_default_directory(self) -> None:
-        with patch("agent_cli.config.Path.home") as home:
+        with patch("agent_core.config.Path.home") as home:
             home.return_value = Path("/home/test")
 
             self.assertEqual(
