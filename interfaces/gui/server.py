@@ -29,7 +29,7 @@ from ..bridge.config import (
 
 STATIC_PATH = Path(__file__).resolve().parent / "static"
 HOST = "127.0.0.1"
-PORT = 8000
+PORT = 8737
 SHUTDOWN_TIMEOUT_SECONDS = 2
 # A page switching model reconnects while the previous bridge is still
 # shutting down; only a genuinely occupied agent should be refused.

@@ -134,7 +134,7 @@ npm run build --prefix interfaces/gui
 jarvis-gui
 ```
 
-打开 <http://127.0.0.1:8000>，服务只监听本机地址。参数与 `jarvis` 一致：
+打开 <http://127.0.0.1:8737>，服务只监听本机地址。参数与 `jarvis` 一致：
 
 ```bash
 jarvis-gui --workspace ~/projects/my-project
