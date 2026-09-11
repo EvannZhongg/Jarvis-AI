@@ -13,6 +13,11 @@ export type AppProps = {
   agentConfigPath: string;
 };
 
+/** Keep Windows paths unambiguous on the newline-delimited JSON channel. */
+function protocolPath(path: string): string {
+  return path.replaceAll('\\', '/');
+}
+
 export function App(props: AppProps): React.ReactElement {
   const { exit } = useApp();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -48,10 +53,10 @@ export function App(props: AppProps): React.ReactElement {
   useEffect(() => {
     bridge.send({
       type: 'start',
-      workspace: props.workspace,
+      workspace: protocolPath(props.workspace),
       session_id: props.sessionId,
-      provider_config_path: props.providerConfigPath,
-      agent_config_path: props.agentConfigPath,
+      provider_config_path: protocolPath(props.providerConfigPath),
+      agent_config_path: protocolPath(props.agentConfigPath),
     });
     return () => bridge.shutdown();
   }, [bridge]);

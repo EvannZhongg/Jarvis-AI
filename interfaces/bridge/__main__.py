@@ -17,6 +17,11 @@ def _claim_stdout() -> TextIO:
 
 
 def main() -> None:
+    # Node writes the protocol as UTF-8.  On Windows Python may inherit a
+    # locale-specific (for example GBK) stdin encoding, which corrupts
+    # non-ASCII paths before JSON decoding.
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="strict")
     protocol_out = _claim_stdout()
 
     from .bridge import Bridge
