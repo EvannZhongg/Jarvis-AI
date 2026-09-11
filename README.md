@@ -5,7 +5,7 @@ React + assistant-ui 可视化界面。
 
 ## 安装
 
-需要 Python >= 3.11、Node.js >= 22（Node 只在运行时需要）和
+需要 Python >= 3.11、Node.js >= 22（构建和运行终端界面都需要）和
 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
