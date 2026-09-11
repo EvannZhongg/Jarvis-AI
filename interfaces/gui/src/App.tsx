@@ -47,7 +47,7 @@ export function App() {
   return (
     <div className="app-shell">
       <aside className="sessions-panel" aria-label="Sessions">
-        <div className="brand"><span className="brand-icon"><Terminal size={19} /></span><span>Jarvis<span className="brand-dot">.</span></span></div>
+        <div className="brand"><span className="brand-icon"><Terminal size={19} /></span><span>Nosis<span className="brand-dot">.</span></span></div>
         <button className="new-chat" disabled={busy || loading} onClick={() => {
           setSession({ session_id: crypto.randomUUID(), items: [] });
           setError("");

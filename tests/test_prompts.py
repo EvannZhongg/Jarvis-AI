@@ -13,7 +13,7 @@ class PromptsTest(unittest.TestCase):
             prompt = load_system_prompt(workspace)
 
         self.assertTrue(prompt)
-        self.assertIn("I am Jarvis", prompt)
+        self.assertIn("I am Nosis", prompt)
         self.assertIn(
             f"Current workspace: {{{{{workspace.path}}}}}",
             prompt,

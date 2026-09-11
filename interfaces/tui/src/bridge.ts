@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { MessageDecoder, type Incoming, type Outgoing } from '@jarvis/protocol';
+import { MessageDecoder, type Incoming, type Outgoing } from '@nosis/protocol';
 
 export type BridgeOptions = {
   python: string;

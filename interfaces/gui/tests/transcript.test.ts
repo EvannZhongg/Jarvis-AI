@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Incoming } from "@jarvis/protocol";
+import type { Incoming } from "@nosis/protocol";
 import { applyMessage, toMessages, type TranscriptItem } from "../src/transcript";
 
 const TOOL_CALL = { id: "call-1", name: "shell", arguments: { command: "ls" } };

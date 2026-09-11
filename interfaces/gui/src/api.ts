@@ -1,4 +1,4 @@
-import type { ToolCall } from "@jarvis/protocol";
+import type { ToolCall } from "@nosis/protocol";
 
 export type SessionItem = {
   role: "user" | "assistant" | "tool";

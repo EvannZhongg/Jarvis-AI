@@ -171,7 +171,7 @@ export function App(props: AppProps): React.ReactElement {
     <Box flexDirection="column">
       {state.status !== 'starting' && state.entries.length === 0 ? (
         <Box>
-          <Text dimColor>Jarvis · {state.workspace}</Text>
+          <Text dimColor>Nosis · {state.workspace}</Text>
         </Box>
       ) : null}
 

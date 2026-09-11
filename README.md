@@ -1,4 +1,4 @@
-# Jarvis
+# Nosis
 
 个人 AI Agent：Python Agent Runtime，配 TypeScript（Ink + React）终端界面和
 React + assistant-ui 可视化界面。
@@ -9,15 +9,15 @@ React + assistant-ui 可视化界面。
 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
-git clone https://github.com/EvannZhongg/Jarvis-AI.git
-cd Jarvis-AI
+git clone https://github.com/EvannZhongg/Nosis.git
+cd Nosis
 
 npm install --prefix interfaces/tui
 npm run build --prefix interfaces/tui
 uv tool install --editable ".[gui]"
 ```
 
-`uv tool install` 会为 Jarvis 建一个独立环境，把 `jarvis` 和 `jarvis-gui` 装到
+`uv tool install` 会为 Nosis 建一个独立环境，把 `nosis` 和 `nosis-gui` 装到
 `~/.local/bin`（该目录不在 PATH 上时 uv 会提示需要执行的命令）；装完后在任意
 目录、任意新开的终端直接执行，不需要激活虚拟环境。更新仓库代码后如果启动了新
 依赖，重新执行一次上面的 `uv tool install` 命令即可安装。
@@ -33,7 +33,7 @@ Windows 用 Git Bash），因此命令写法在各平台一致；找不到 Git B
 
 ```bash
 cd ~/projects/my-project
-jarvis
+nosis
 ```
 
 未传 `--workspace` 时，启动命令的当前目录就是 Workspace。可选参数：
@@ -61,7 +61,7 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
 
 ## 配置
 
-首次运行会在 `~/.jarvis/` 下生成 `provider_config.json` 和
+首次运行会在 `~/.nosis/` 下生成 `provider_config.json` 和
 `agent_config.json`。
 
 `agent_config.json` 控制 Agent 行为：
@@ -114,7 +114,7 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
   `openai/glm-5.3`、`url` 填 `https://open.bigmodel.cn/api/paas/v4/`。`providers`
   里的条目名称不会自动作为 LiteLLM 的服务商标识。
 
-密钥放在 `~/.jarvis/.env`：
+密钥放在 `~/.nosis/.env`：
 
 ```dotenv
 DEEPSEEK_KEY=your-api-key
@@ -138,14 +138,14 @@ GUI 使用 React + assistant-ui，布局为左侧 Sessions、中间 Chat、右�
 ```bash
 npm install --prefix interfaces/gui
 npm run build --prefix interfaces/gui
-jarvis-gui
+nosis-gui
 ```
 
-打开 <http://127.0.0.1:8737>，服务只监听本机地址。参数与 `jarvis` 一致：
+打开 <http://127.0.0.1:8737>，服务只监听本机地址。参数与 `nosis` 一致：
 
 ```bash
-jarvis-gui --workspace ~/projects/my-project
-jarvis-gui --config path/to/provider_config.json --agent-config path/to/agent_config.json
+nosis-gui --workspace ~/projects/my-project
+nosis-gui --config path/to/provider_config.json --agent-config path/to/agent_config.json
 ```
 
 GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
@@ -154,7 +154,7 @@ GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
 当前轮次，等同 TUI 的 `Esc`；被取消的轮次不会写入 Session 文件，已执行的工具
 操作不会撤销。同一时刻只允许一个页面驱动 Agent。
 
-前端开发时先启动 `jarvis-gui`，另开终端执行
+前端开发时先启动 `nosis-gui`，另开终端执行
 `npm run dev --prefix interfaces/gui`，访问 Vite 显示的
 <http://127.0.0.1:5173>，API 和 WebSocket 会代理到 Python 服务。界面代码在
 `interfaces/gui/`，构建产物在 `interfaces/gui/static/`（不提交）。
@@ -164,7 +164,7 @@ GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
 每轮成功对话都会把本轮新增的 Session Items、发送给模型的完整消息上下文和模型
 响应追加到 Workspace 下的 `sessions/<SESSION_ID>/<SESSION_ID>.jsonl`，每行一个
 JSON 对象；超过回灌上限的完整 Tool Result 保存在同一目录的
-`<TOOL_CALL_ID>.txt`。用 `jarvis --session SESSION_ID` 恢复历史对话。
+`<TOOL_CALL_ID>.txt`。用 `nosis --session SESSION_ID` 恢复历史对话。
 
 内置 Tool 有 `read_file`、`edit_file`、`search_files`、`list_directory`、
 `shell` 和 `web_search`：
@@ -187,22 +187,22 @@ Agent Runtime 与界面解耦：界面进程不直接调用 Runtime，而是启�
 子进程，通过 stdio 上的 newline-delimited JSON 通信。
 
 ```text
-jarvis (Python console script)
+nosis (Python console script)
   └─ node interfaces/tui/dist/app.js      Ink + React 界面，持有 TTY
        └─ python -m interfaces.bridge      Agent Runtime
             └─ agent_core                  与界面无关
 
-jarvis-gui (Python console script)
+nosis-gui (Python console script)
   └─ interfaces/gui/server.py             HTTP API + WebSocket 中继
        └─ python -m interfaces.bridge      Agent Runtime
             └─ agent_core                  与界面无关
 ```
 
 ```text
-Jarvis/
+Nosis/
 ├── agent_core/          Agent Runtime，不依赖任何界面
 └── interfaces/
-    ├── launch.py        jarvis 命令入口
+    ├── launch.py        nosis 命令入口
     ├── bridge/          Runtime 与协议的适配层
     ├── protocol/        TUI 与 GUI 共用的协议类型
     ├── tui/             TypeScript + Ink + React 终端界面

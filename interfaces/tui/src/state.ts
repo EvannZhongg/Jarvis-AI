@@ -1,5 +1,5 @@
-import type { Incoming, ProtocolError, Usage } from '@jarvis/protocol';
-import { stripTimestamp } from '@jarvis/protocol';
+import type { Incoming, ProtocolError, Usage } from '@nosis/protocol';
+import { stripTimestamp } from '@nosis/protocol';
 
 export type Status =
   | 'starting'

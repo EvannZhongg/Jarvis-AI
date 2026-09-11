@@ -44,12 +44,12 @@ class ConfigTest(unittest.TestCase):
 
             self.assertEqual(
                 default_config_directory(),
-                Path("/home/test/.jarvis"),
+                Path("/home/test/.nosis"),
             )
 
     def test_initializes_packaged_default_configs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            config_directory = Path(directory) / "jarvis"
+            config_directory = Path(directory) / "nosis"
 
             created = initialize_default_configs(config_directory)
 
@@ -70,7 +70,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_initialization_does_not_overwrite_existing_config(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            config_directory = Path(directory) / "jarvis"
+            config_directory = Path(directory) / "nosis"
             config_directory.mkdir()
             provider_path = config_directory / "provider_config.json"
             provider_path.write_text("custom", encoding="utf-8")

@@ -1,4 +1,4 @@
-import type { Incoming, Outgoing } from "@jarvis/protocol";
+import type { Incoming, Outgoing } from "@nosis/protocol";
 
 export type SessionSocketOptions = {
   sessionId: string | null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MessageDecoder, formatArguments, stripTimestamp } from '@jarvis/protocol';
+import { MessageDecoder, formatArguments, stripTimestamp } from '@nosis/protocol';
 import { initialState, reducer, type State } from '../src/state.js';
 
 const READY = {

@@ -11,7 +11,7 @@ type Options = {
   agentConfigPath: string;
 };
 
-const USAGE = `Usage: jarvis [options]
+const USAGE = `Usage: nosis [options]
 
 Options:
   --workspace <path>      Workspace directory (default: current directory)
@@ -22,7 +22,7 @@ Options:
 `;
 
 function parseArguments(argv: string[]): Options {
-  const configDirectory = join(homedir(), '.jarvis');
+  const configDirectory = join(homedir(), '.nosis');
   const options: Options = {
     workspace: process.cwd(),
     sessionId: null,
@@ -66,10 +66,10 @@ function parseArguments(argv: string[]): Options {
 
 const options = parseArguments(process.argv.slice(2));
 
-const python = process.env.JARVIS_PYTHON;
+const python = process.env.NOSIS_PYTHON;
 if (!python) {
   process.stderr.write(
-    'JARVIS_PYTHON is not set. Run Jarvis through the "jarvis" command.\n',
+    'NOSIS_PYTHON is not set. Run Nosis through the "nosis" command.\n',
   );
   process.exit(2);
 }

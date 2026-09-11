@@ -1,6 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import type { Incoming, ToolCall } from "@jarvis/protocol";
-import { stripTimestamp } from "@jarvis/protocol";
+import type { Incoming, ToolCall } from "@nosis/protocol";
+import { stripTimestamp } from "@nosis/protocol";
 import type { SessionItem } from "./api";
 
 /** A transcript item, plus the streaming state the live turn needs. */

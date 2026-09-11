@@ -109,7 +109,7 @@ def create_app(
     models: dict[str, str],
     default_model: str,
 ) -> FastAPI:
-    app = FastAPI(title="Jarvis", docs_url=None, redoc_url=None)
+    app = FastAPI(title="Nosis", docs_url=None, redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=[HOST, "localhost"])
     # One agent at a time: concurrent turns would write the same workspace.
     session_lock = asyncio.Lock()
@@ -170,7 +170,7 @@ def create_app(
                     "type": "fatal",
                     "error": {
                         "type": "SessionBusy",
-                        "message": "Jarvis 正在另一个页面中执行任务。",
+                        "message": "Nosis 正在另一个页面中执行任务。",
                     },
                 }
             )
@@ -294,7 +294,7 @@ def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
     config_directory = default_config_directory()
-    parser = argparse.ArgumentParser(prog="jarvis-gui")
+    parser = argparse.ArgumentParser(prog="nosis-gui")
     parser.add_argument("--workspace", type=Path, default=None)
     parser.add_argument(
         "--config",
@@ -321,10 +321,10 @@ def main(argv: list[str] | None = None) -> None:
             default_model=default_model,
         )
     except (OSError, ValueError) as error:
-        raise SystemExit(f"Failed to start Jarvis: {error}") from error
+        raise SystemExit(f"Failed to start Nosis: {error}") from error
 
     print(f"Workspace: {workspace.path}")
-    print(f"Jarvis GUI: http://{HOST}:{PORT}")
+    print(f"Nosis GUI: http://{HOST}:{PORT}")
     if not STATIC_PATH.is_dir():
         print(
             "The interface is not built. Run 'npm install && npm run build' "

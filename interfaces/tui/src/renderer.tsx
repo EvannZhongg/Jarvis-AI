@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Static, Text } from 'ink';
 import Spinner from 'ink-spinner';
-import { formatArguments } from '@jarvis/protocol';
+import { formatArguments } from '@nosis/protocol';
 import type { ApprovalChoice, Entry, State } from './state.js';
 
 function EntryView({ entry }: { entry: Entry }): React.ReactElement {

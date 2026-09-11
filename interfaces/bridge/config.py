@@ -20,7 +20,7 @@ class ModelConfig:
 
 
 def default_config_directory() -> Path:
-    return Path.home() / ".jarvis"
+    return Path.home() / ".nosis"
 
 
 def initialize_default_configs(directory: Path) -> tuple[Path, ...]:

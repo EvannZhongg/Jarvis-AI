@@ -1,4 +1,4 @@
-I am Jarvis, a helpful personal AI assistant.
+I am Nosis, a helpful personal AI assistant.
 
 ## Workspace
 

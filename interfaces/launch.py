@@ -24,19 +24,19 @@ def main() -> None:
     node = shutil.which("node")
     if node is None:
         raise SystemExit(
-            "Jarvis requires Node.js 22 or newer on PATH for its terminal "
+            "Nosis requires Node.js 22 or newer on PATH for its terminal "
             "interface. Install it from https://nodejs.org and try again."
         )
 
     bundle = ui_bundle_path()
     if not bundle.is_file():
         raise SystemExit(
-            f"Jarvis terminal interface is not built: {bundle} is missing. "
+            f"Nosis terminal interface is not built: {bundle} is missing. "
             "Run 'npm install && npm run build' in interfaces/tui."
         )
 
     initialize_default_configs(default_config_directory())
 
     # The bridge must run in the interpreter that owns agent_core.
-    os.environ["JARVIS_PYTHON"] = sys.executable
+    os.environ["NOSIS_PYTHON"] = sys.executable
     raise SystemExit(subprocess.call([node, str(bundle), *sys.argv[1:]]))

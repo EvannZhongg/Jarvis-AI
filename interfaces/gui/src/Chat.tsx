@@ -38,7 +38,7 @@ function MarkdownText() {
 
 function AssistantMessage() {
   return <MessagePrimitive.Root className="assistant-message">
-    <div className="assistant-label"><span className="assistant-avatar"><Terminal size={14} /></span>Jarvis</div>
+    <div className="assistant-label"><span className="assistant-avatar"><Terminal size={14} /></span>Nosis</div>
     <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCard } }} /></div>
   </MessagePrimitive.Root>;
 }
@@ -112,7 +112,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
           void endTurn();
         }
       },
-      onError: () => setNotice({ level: "error", text: "无法连接 Jarvis。" }),
+      onError: () => setNotice({ level: "error", text: "无法连接 Nosis。" }),
     });
     socketRef.current = socket;
     return socket;
@@ -145,24 +145,24 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
     <ThreadPrimitive.Root className="thread">
       <ThreadPrimitive.Viewport className="thread-viewport">
         <ThreadPrimitive.Empty>
-          <div className="welcome"><div className="welcome-symbol"><Terminal size={26} /></div><div className="eyebrow">YOUR PERSONAL AGENT</div><h1>一起，把想法变成现实。</h1><p>聊聊你的项目，或者交给 Jarvis 一个任务。</p></div>
+          <div className="welcome"><div className="welcome-symbol"><Terminal size={26} /></div><div className="eyebrow">YOUR PERSONAL AGENT</div><h1>一起，把想法变成现实。</h1><p>聊聊你的项目，或者交给 Nosis 一个任务。</p></div>
         </ThreadPrimitive.Empty>
         <div className="messages"><ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} /></div>
       </ThreadPrimitive.Viewport>
       <div className="composer-area">
         {approval && <div className="approval-card" role="region" aria-label="Shell 执行确认"><div className="approval-title"><ShieldCheck size={17} /> 允许执行这条命令？</div><pre>{approval.command}</pre><div className="approval-actions"><button onClick={() => respond(false)}>拒绝</button><button className="approve-button" onClick={() => respond(true)}>允许执行</button></div></div>}
         {notice && <div className={notice.level === "error" ? "error-banner" : "notice-banner"} role="alert">{notice.text}</div>}
-        {running && <div className="activity" role="status"><LoaderCircle size={13} className="spin" />{approval ? "等待你的确认" : "Jarvis 正在处理…"}
+        {running && <div className="activity" role="status"><LoaderCircle size={13} className="spin" />{approval ? "等待你的确认" : "Nosis 正在处理…"}
           {!approval && <button className="stop-button" aria-label="停止执行" onClick={() => socketRef.current?.send({ type: "cancel" })}><Square size={11} /> 停止</button>}
         </div>}
-        <ComposerPrimitive.Root className="composer"><ComposerPrimitive.Input placeholder="Ask Jarvis…" aria-label="消息" rows={2} autoFocus /><div className="composer-bottom">
+        <ComposerPrimitive.Root className="composer"><ComposerPrimitive.Input placeholder="Ask Nosis…" aria-label="消息" rows={2} autoFocus /><div className="composer-bottom">
           <label className="model-selector" title={models.find((option) => option.id === model)?.model}>
             <select aria-label="选择模型" value={model} disabled={disabled || running} onChange={(event) => onModelChange(event.target.value)}>
               {models.map((option) => <option key={option.id} value={option.id}>{option.model}</option>)}
             </select><ChevronDown size={12} />
           </label>
           <span className="composer-hint">Enter 发送 · Shift + Enter 换行</span><ComposerPrimitive.Send className="send-button" aria-label="发送消息"><ArrowUp size={19} /></ComposerPrimitive.Send></div></ComposerPrimitive.Root>
-        <div className="composer-footer">Jarvis · 你的项目搭档</div>
+        <div className="composer-footer">Nosis · 你的项目搭档</div>
       </div>
     </ThreadPrimitive.Root>
   </AssistantRuntimeProvider>;

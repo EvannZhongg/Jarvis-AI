@@ -323,7 +323,7 @@ class ReadFileToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "你好，Jarvis。\n第二行\n",
+                "你好，Nosis。\n第二行\n",
                 encoding="utf-8",
                 newline="\n",
             )
@@ -335,10 +335,10 @@ class ReadFileToolTest(unittest.TestCase):
                 {
                     "path": "notes.txt",
                     "file_size_bytes": len(
-                        "你好，Jarvis。\n第二行\n".encode("utf-8")
+                        "你好，Nosis。\n第二行\n".encode("utf-8")
                     ),
                     "content": (
-                        "1| 你好，Jarvis。\n"
+                        "1| 你好，Nosis。\n"
                         "2| 第二行\n\n"
                         "(End of file — 2 lines total)"
                     ),
@@ -605,7 +605,7 @@ class EditFileToolTest(unittest.TestCase):
                 {
                     "path": "notes.txt",
                     "old_text": "world",
-                    "new_text": "Jarvis",
+                    "new_text": "Nosis",
                 }
             )
 
@@ -618,7 +618,7 @@ class EditFileToolTest(unittest.TestCase):
             )
             self.assertEqual(
                 file_path.read_text(encoding="utf-8"),
-                "hello Jarvis\n",
+                "hello Nosis\n",
             )
 
     def test_rejects_missing_old_text(self) -> None:
@@ -767,16 +767,16 @@ class SearchFilesToolTest(unittest.TestCase):
             nested = workspace.path / "nested"
             nested.mkdir()
             (workspace.path / "root.txt").write_text(
-                "first Jarvis\nsecond\n",
+                "first Nosis\nsecond\n",
                 encoding="utf-8",
             )
             (nested / "child.txt").write_text(
-                "Jarvis child\njarvis lowercase\n",
+                "Nosis child\nnosis lowercase\n",
                 encoding="utf-8",
             )
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": r"Jarvis"}
+                {"path": ".", "pattern": r"Nosis"}
             )
 
             self.assertEqual(
@@ -786,12 +786,12 @@ class SearchFilesToolTest(unittest.TestCase):
                         {
                             "path": "nested/child.txt",
                             "line_number": 1,
-                            "line": "Jarvis child",
+                            "line": "Nosis child",
                         },
                         {
                             "path": "root.txt",
                             "line_number": 1,
-                            "line": "first Jarvis",
+                            "line": "first Nosis",
                         },
                     ],
                     "has_more": False,
@@ -822,22 +822,22 @@ class SearchFilesToolTest(unittest.TestCase):
             nested = workspace.path / "nested"
             nested.mkdir()
             (workspace.path / "root.py").write_text(
-                "value = 'JARVIS.'\n",
+                "value = 'NOSIS.'\n",
                 encoding="utf-8",
             )
             (nested / "child.py").write_text(
-                "value = 'jarvis.'\n",
+                "value = 'nosis.'\n",
                 encoding="utf-8",
             )
             (nested / "child.txt").write_text(
-                "value = 'jarvis.'\n",
+                "value = 'nosis.'\n",
                 encoding="utf-8",
             )
 
             result = SearchFilesTool(workspace).execute(
                 {
                     "path": ".",
-                    "pattern": "jarvis.",
+                    "pattern": "nosis.",
                     "glob": "**/*.py",
                     "case_insensitive": True,
                     "fixed_strings": True,
@@ -854,7 +854,7 @@ class SearchFilesToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "\n".join(f"Jarvis {index}" for index in range(5)),
+                "\n".join(f"Nosis {index}" for index in range(5)),
                 encoding="utf-8",
             )
             tool = SearchFilesTool(workspace)
@@ -862,7 +862,7 @@ class SearchFilesToolTest(unittest.TestCase):
             first_page = tool.execute(
                 {
                     "path": ".",
-                    "pattern": "Jarvis",
+                    "pattern": "Nosis",
                     "offset": 0,
                     "limit": 2,
                 }
@@ -870,7 +870,7 @@ class SearchFilesToolTest(unittest.TestCase):
             second_page = tool.execute(
                 {
                     "path": ".",
-                    "pattern": "Jarvis",
+                    "pattern": "Nosis",
                     "offset": first_page["next_offset"],
                     "limit": 2,
                 }
@@ -893,12 +893,12 @@ class SearchFilesToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "\n".join("Jarvis" for _ in range(201)),
+                "\n".join("Nosis" for _ in range(201)),
                 encoding="utf-8",
             )
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             self.assertEqual(len(result["matches"]), 200)
@@ -912,16 +912,16 @@ class SearchFilesToolTest(unittest.TestCase):
                 excluded = workspace.path / name
                 excluded.mkdir()
                 (excluded / "match.txt").write_text(
-                    "Jarvis",
+                    "Nosis",
                     encoding="utf-8",
                 )
             (workspace.path / "match.txt").write_text(
-                "Jarvis",
+                "Nosis",
                 encoding="utf-8",
             )
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             self.assertEqual(
@@ -934,7 +934,7 @@ class SearchFilesToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "large.txt").write_text(
-                "Jarvis",
+                "Nosis",
                 encoding="utf-8",
             )
 
@@ -944,7 +944,7 @@ class SearchFilesToolTest(unittest.TestCase):
                 3,
             ):
                 result = SearchFilesTool(workspace).execute(
-                    {"path": ".", "pattern": "Jarvis"}
+                    {"path": ".", "pattern": "Nosis"}
                 )
 
             self.assertEqual(result["matches"], [])
@@ -956,7 +956,7 @@ class SearchFilesToolTest(unittest.TestCase):
             workspace = Workspace(Path(directory))
             for index in range(3):
                 (workspace.path / f"{index}.txt").write_text(
-                    "Jarvis",
+                    "Nosis",
                     encoding="utf-8",
                 )
 
@@ -966,7 +966,7 @@ class SearchFilesToolTest(unittest.TestCase):
                 2,
             ):
                 result = SearchFilesTool(workspace).execute(
-                    {"path": ".", "pattern": "Jarvis"}
+                    {"path": ".", "pattern": "Nosis"}
                 )
 
             self.assertTrue(result["has_more"])
@@ -977,12 +977,12 @@ class SearchFilesToolTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "Jarvis " + ("x" * (MAX_OUTPUT_CHARS * 2)),
+                "Nosis " + ("x" * (MAX_OUTPUT_CHARS * 2)),
                 encoding="utf-8",
             )
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             content = ToolResult(
@@ -996,10 +996,10 @@ class SearchFilesToolTest(unittest.TestCase):
     def test_skips_non_utf8_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
-            (workspace.path / "binary.bin").write_bytes(b"\xffJarvis")
+            (workspace.path / "binary.bin").write_bytes(b"\xffNosis")
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             self.assertEqual(result["matches"], [])
@@ -1017,11 +1017,11 @@ class SearchFilesToolTest(unittest.TestCase):
         ):
             workspace = Workspace(Path(directory))
             outside_file = Path(outside_directory) / "outside.txt"
-            outside_file.write_text("Jarvis", encoding="utf-8")
+            outside_file.write_text("Nosis", encoding="utf-8")
             os.symlink(outside_file, workspace.path / "link.txt")
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             self.assertEqual(result["matches"], [])
@@ -1038,7 +1038,7 @@ class SearchFilesToolTest(unittest.TestCase):
         ):
             workspace = Workspace(Path(directory))
             outside_file = Path(outside_directory) / "outside.txt"
-            outside_file.write_text("Jarvis", encoding="utf-8")
+            outside_file.write_text("Nosis", encoding="utf-8")
             subprocess.run(
                 [
                     "cmd",
@@ -1053,7 +1053,7 @@ class SearchFilesToolTest(unittest.TestCase):
             )
 
             result = SearchFilesTool(workspace).execute(
-                {"path": ".", "pattern": "Jarvis"}
+                {"path": ".", "pattern": "Nosis"}
             )
 
             self.assertEqual(result["matches"], [])
@@ -1067,19 +1067,19 @@ class SearchFilesToolTest(unittest.TestCase):
                 ValueError,
                 "must stay within the workspace",
             ):
-                tool.execute({"path": "..", "pattern": "Jarvis"})
+                tool.execute({"path": "..", "pattern": "Nosis"})
 
     def test_rejects_file_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Workspace(Path(directory))
             (workspace.path / "notes.txt").write_text(
-                "Jarvis",
+                "Nosis",
                 encoding="utf-8",
             )
 
             with self.assertRaisesRegex(ValueError, "must be a directory"):
                 SearchFilesTool(workspace).execute(
-                    {"path": "notes.txt", "pattern": "Jarvis"}
+                    {"path": "notes.txt", "pattern": "Nosis"}
                 )
 
     def test_rejects_invalid_regular_expression(self) -> None:

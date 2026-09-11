@@ -81,7 +81,7 @@ class GuiTest(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
-        (self.root / "README.md").write_text("Hello Jarvis", encoding="utf-8")
+        (self.root / "README.md").write_text("Hello Nosis", encoding="utf-8")
         (self.root / "src").mkdir()
         self.provider_config_path = self.root / "provider_config.json"
         self.agent_config_path = self.root / "agent_config.json"
@@ -385,7 +385,7 @@ class GuiStartupTest(unittest.TestCase):
     def test_initializes_shared_default_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            config_directory = root / "jarvis"
+            config_directory = root / "nosis"
             with (
                 patch.object(
                     server,
