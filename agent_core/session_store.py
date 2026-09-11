@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .llm import LLMRequest, LLMResponse
 from .session import Message, Session
+from .session_paths import session_log_path
 from .tools import ToolCall
 
 
@@ -79,20 +80,13 @@ class JsonlSessionStore:
                 }
                 for tool in request.tools
             ]
-        self._directory.mkdir(parents=True, exist_ok=True)
         path = self._session_path(session_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def _session_path(self, session_id: str) -> Path:
-        if (
-            not session_id
-            or session_id in {".", ".."}
-            or "/" in session_id
-            or "\\" in session_id
-        ):
-            raise ValueError(f"Invalid session id: {session_id!r}")
-        return self._directory / f"{session_id}.jsonl"
+        return session_log_path(self._directory, session_id)
 
 
 def _message_to_dict(message: Message) -> dict[str, object]:

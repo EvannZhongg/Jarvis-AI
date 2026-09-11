@@ -193,8 +193,11 @@ LLMResponse(
 
 1. 将注册 Tool 的定义随 `LLMRequest` 发送给模型。
 2. 模型返回 Tool Call 时，由 `ToolRegistry` 先执行 Policy，再调用 Tool。
-3. 将 assistant Tool Call 消息和结构化 Tool 结果回灌给模型。
-4. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
+3. 由 `ToolResultNormalizer` 在统一边界治理 Tool Result：不超过
+   16K chars 的结果原样回灌；更大的结果完整写入 Workspace artifact，
+   模型仅接收 artifact 路径、字符数、约 1200 chars 的预览和读取说明。
+4. 将 assistant Tool Call 消息和治理后的结构化 Tool 结果回灌给模型。
+5. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
 执行次数由 `agent_config.json` 限制。CLI 根据 `tools` 配置注册
@@ -209,7 +212,15 @@ LLMResponse(
 
 启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
-`sessions/<SESSION_ID>.jsonl`。
+`sessions/<SESSION_ID>/<SESSION_ID>.jsonl`。超过回灌上限的完整 Tool
+Result 保存在同一目录的 `<TOOL_CALL_ID>.txt` 中。
+
+```text
+sessions/
+└── <SESSION_ID>/
+    ├── <SESSION_ID>.jsonl
+    └── <TOOL_CALL_ID>.txt
+```
 
 每个 Session 使用独立文件，文件中每行都是一个完整 JSON 对象。恢复
 Session 时只读取对应文件中的 `items`，因此 Tool Call 和 Tool Result

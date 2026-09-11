@@ -7,6 +7,7 @@ from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
+from .tool_result import ToolResultNormalizer
 from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
 from .workspace import Workspace
 
@@ -96,6 +97,7 @@ class Agent:
         now: Callable[[], datetime] | None = None,
         tools: Iterable[Tool] = (),
         tool_policy: ToolPolicy | None = None,
+        tool_result_normalizer: ToolResultNormalizer | None = None,
     ) -> None:
         self._provider = provider
         self._session = session
@@ -104,6 +106,10 @@ class Agent:
         self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._tools = ToolRegistry(tools, policy=tool_policy)
+        self._tool_result_normalizer = (
+            tool_result_normalizer
+            or ToolResultNormalizer(workspace, session.session_id)
+        )
         if self._config.max_output_tokens >= self._provider.max_context_tokens:
             raise ValueError(
                 "max_output_tokens must be less than the provider's "
@@ -209,6 +215,9 @@ class Agent:
                             )
                         )
                     tool_result = self._tools.execute(tool_call)
+                    normalized_content = (
+                        self._tool_result_normalizer.normalize(tool_result)
+                    )
                     if on_event is not None:
                         on_event(
                             ToolResultEvent(
@@ -219,7 +228,7 @@ class Agent:
                         )
                     self._session.add_item(
                         role="tool",
-                        content=tool_result.to_content(),
+                        content=normalized_content,
                         timestamp_utc=self._now().astimezone(timezone.utc),
                         tool_call_id=tool_call.id,
                     )

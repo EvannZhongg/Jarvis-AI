@@ -1,0 +1,73 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from agent_core import (
+    ToolResult,
+    ToolResultNormalizer,
+    Workspace,
+)
+
+
+class ToolResultNormalizerTest(unittest.TestCase):
+    def test_returns_small_result_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            result = ToolResult(
+                tool_call_id="call-1",
+                name="echo",
+                output={"text": "hello"},
+            )
+            normalizer = ToolResultNormalizer(
+                workspace,
+                "session-1",
+                max_chars=1000,
+                preview_chars=20,
+            )
+
+            normalized = normalizer.normalize(result)
+
+            self.assertEqual(normalized, result.to_content())
+            self.assertFalse((workspace.path / "sessions").exists())
+
+    def test_writes_large_result_and_returns_artifact_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            result = ToolResult(
+                tool_call_id="call/1",
+                name="echo",
+                output={"text": "abcdefghijklmnopqrstuvwxyz"},
+            )
+            normalizer = ToolResultNormalizer(
+                workspace,
+                "session-1",
+                max_chars=20,
+                preview_chars=12,
+            )
+
+            normalized = normalizer.normalize(result)
+
+            artifact_path = "sessions/session-1/call%2F1.txt"
+            self.assertEqual(
+                (workspace.path / artifact_path).read_text(
+                    encoding="utf-8"
+                ),
+                result.to_content(),
+            )
+            self.assertEqual(
+                json.loads(normalized),
+                {
+                    "artifact_path": artifact_path,
+                    "size_chars": len(result.to_content()),
+                    "preview": result.to_content()[:12],
+                    "read_instruction": (
+                        "Use read_file with path "
+                        f"'{artifact_path}' to read the complete tool result."
+                    ),
+                },
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

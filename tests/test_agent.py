@@ -1,4 +1,5 @@
 import json
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,9 @@ from agent_core import (
     ToolCallLimitExceededError,
     ToolConfig,
     ToolDefinition,
+    ToolResult,
     ToolResultEvent,
+    ToolResultNormalizer,
     Workspace,
 )
 
@@ -411,6 +414,78 @@ class AgentTest(unittest.TestCase):
                 },
             },
         )
+
+    def test_normalizes_large_tool_result_before_model_feedback(self) -> None:
+        tool_call = ToolCall(
+            id="call-1",
+            name="echo",
+            arguments={"text": "abcdefghijklmnopqrstuvwxyz"},
+        )
+        provider = MockProvider(
+            [
+                LLMResponse(content=None, tool_calls=(tool_call,)),
+                LLMResponse(content="done"),
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(Path(directory))
+            session = Session(session_id="session-1")
+            agent = Agent(
+                provider=provider,
+                session=session,
+                system_prompt="You are helpful.",
+                config=AGENT_CONFIG,
+                workspace=workspace,
+                now=clock(
+                    REQUEST_TIME,
+                    TOOL_CALL_TIME,
+                    TOOL_RESULT_TIME,
+                    RESPONSE_TIME,
+                ),
+                tools=(EchoTool(),),
+                tool_result_normalizer=ToolResultNormalizer(
+                    workspace,
+                    session.session_id,
+                    max_chars=20,
+                    preview_chars=12,
+                ),
+            )
+            events = []
+
+            agent.run("use the echo tool", on_event=events.append)
+
+            tool_message = provider.requests[1].messages[-1]
+            feedback = json.loads(tool_message.content)
+            artifact_path = "sessions/session-1/call-1.txt"
+            self.assertEqual(feedback["artifact_path"], artifact_path)
+            self.assertEqual(
+                feedback["read_instruction"],
+                "Use read_file with path "
+                f"'{artifact_path}' to read the complete tool result.",
+            )
+            full_result = ToolResult(
+                tool_call_id="call-1",
+                name="echo",
+                output={"text": "abcdefghijklmnopqrstuvwxyz"},
+            ).to_content()
+            self.assertEqual(feedback["size_chars"], len(full_result))
+            self.assertEqual(feedback["preview"], full_result[:12])
+            self.assertEqual(
+                (workspace.path / artifact_path).read_text(
+                    encoding="utf-8"
+                ),
+                full_result,
+            )
+            result_events = [
+                event
+                for event in events
+                if isinstance(event, ToolResultEvent)
+            ]
+            self.assertEqual(
+                result_events[0].tool_result.output,
+                {"text": "abcdefghijklmnopqrstuvwxyz"},
+            )
 
     def test_stops_on_sixth_identical_tool_call(self) -> None:
         responses = [

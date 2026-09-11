@@ -54,7 +54,11 @@ class JsonlSessionStoreTest(unittest.TestCase):
                 items,
             )
 
-            path = sessions_directory / "session-1.jsonl"
+            path = (
+                sessions_directory
+                / "session-1"
+                / "session-1.jsonl"
+            )
             record = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(record["session_id"], "session-1")
             self.assertEqual(
@@ -190,8 +194,14 @@ class JsonlSessionStoreTest(unittest.TestCase):
                 [*first_items, *second_items],
             )
             self.assertEqual(
-                sorted(path.name for path in sessions_directory.iterdir()),
-                ["session-1.jsonl", "session-2.jsonl"],
+                sorted(
+                    path.relative_to(sessions_directory).as_posix()
+                    for path in sessions_directory.rglob("*.jsonl")
+                ),
+                [
+                    "session-1/session-1.jsonl",
+                    "session-2/session-2.jsonl",
+                ],
             )
 
     def test_loads_missing_session_without_creating_file(self) -> None:
