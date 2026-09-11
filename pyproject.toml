@@ -22,6 +22,9 @@ nosis-gui = "interfaces.gui.server:main"
 
 [tool.setuptools.packages.find]
 include = ["agent_core*", "interfaces*"]
+# Without this, discovery walks every directory in the tree, so the
+# TypeScript sources and node_modules under interfaces/ become packages.
+namespaces = false
 
 [tool.setuptools.package-data]
 agent_core = ["prompts/*.md"]
