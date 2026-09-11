@@ -19,9 +19,7 @@ uv tool install --editable ".[gui]"
 
 `uv tool install` 会为 Jarvis 建一个独立环境，把 `jarvis` 和 `jarvis-gui` 装到
 `~/.local/bin`（该目录不在 PATH 上时 uv 会提示需要执行的命令）；装完后在任意
-目录、任意新开的终端直接执行，不需要激活虚拟环境。`--editable` 表示直接使用
-本仓库源码，改完 `interfaces/tui` 后重新执行
-`npm run build --prefix interfaces/tui` 即可生效，不用重装。
+目录、任意新开的终端直接执行，不需要激活虚拟环境。
 
 Windows 上 `shell` Tool 需要 [Git for Windows](https://git-scm.com/download/win)
 提供的 Git Bash。命令统一在 POSIX shell 中执行（macOS/Linux 用 `/bin/sh`，
