@@ -52,6 +52,12 @@ class AgentRunResult:
 
 
 @dataclass(frozen=True)
+class AssistantMessageDeltaEvent:
+    text: str
+    model_call_index: int
+
+
+@dataclass(frozen=True)
 class AssistantMessageEvent:
     content: str
     timestamp_utc: datetime
@@ -79,7 +85,8 @@ class ToolResultEvent:
 
 
 AgentEvent: TypeAlias = (
-    AssistantMessageEvent
+    AssistantMessageDeltaEvent
+    | AssistantMessageEvent
     | ToolBatchStartedEvent
     | ToolCallEvent
     | ToolResultEvent
@@ -155,7 +162,20 @@ class Agent:
                     max_output_tokens=self._config.max_output_tokens,
                 )
             model_call_index += 1
-            response = self._provider.complete(request)
+
+            def on_text_delta(
+                text: str,
+                model_call_index: int = model_call_index,
+            ) -> None:
+                if on_event is not None:
+                    on_event(
+                        AssistantMessageDeltaEvent(
+                            text=text,
+                            model_call_index=model_call_index,
+                        )
+                    )
+
+            response = self._provider.stream(request, on_text_delta)
 
             if response.tool_calls:
                 next_tool_call_key = previous_tool_call_key

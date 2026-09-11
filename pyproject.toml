@@ -13,11 +13,12 @@ dependencies = [
 ]
 
 [project.scripts]
-jarvis = "agent_cli.cli:main"
+jarvis = "interfaces.launch:main"
 
 [tool.setuptools.packages.find]
-include = ["agent_core*", "agent_cli*"]
+include = ["agent_core*", "interfaces*"]
 
 [tool.setuptools.package-data]
 agent_core = ["prompts/*.md"]
-agent_cli = ["defaults/*.json"]
+"interfaces" = ["tui/dist/app.js"]
+"interfaces.bridge" = ["defaults/*.json"]

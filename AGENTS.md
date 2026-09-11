@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本项目用于开发一个个人 AI Agent，支持终端 CLI 与可视化 GUI。开发时遵循以下要求。
+本项目用于开发一个个人 AI Agent，支持 TUI 与可视化 GUI。开发时遵循以下要求。
 
 ## 1. 总体原则
 
@@ -12,16 +12,16 @@
 
 ## 2. 架构要求
 
-* Agent Core 与 CLI、GUI 解耦。
-* CLI 和 GUI 仅作为交互层，共享同一套 Agent Runtime。
+* Agent Core 与 TUI、GUI 解耦。
+* TUI 和 GUI 仅作为交互层，共享同一套 Agent Runtime。
 * Agent Core 不依赖任何具体 UI 实现。
-* 核心能力通过稳定接口暴露，不允许将 CLI/GUI 特有逻辑写入 Agent Runtime。
+* 核心能力通过稳定接口暴露，不允许将 TUI/GUI 特有逻辑写入 Agent Runtime。
 * 保持清晰的依赖方向，避免模块间循环依赖。
 
 推荐依赖关系：
 
 ```text
-CLI ───────┐
+TUI ───────┐
            ├── Agent Core
 GUI/API ───┘
 ```
@@ -48,19 +48,19 @@ Agent Loop 应保持显式、可理解和可测试，不隐藏关键执行流程
 * 不允许模型绕过 Tool 系统直接执行系统操作。
 * Tool 的输入、输出和错误应使用结构化数据。
 
-## 5. CLI 与 GUI
+## 5. TUI 与 GUI
 
-* CLI 和 GUI 必须复用相同的 Agent 行为。
+* TUI 和 GUI 必须复用相同的 Agent 行为。
 * 禁止分别维护两套 Agent 执行逻辑。
 * GUI 展示需求不得反向污染 Agent Core。
 * Agent 输出优先采用结构化 Event，再由不同前端自行渲染。
-* CLI 应保持可脚本化；GUI 应重点展示对话、Tool 执行、状态和人工确认。
+* GUI 应重点展示对话、Tool 执行、状态和人工确认。
 
 ## 6. Session 与状态
 
 * 对话和执行过程应围绕 Session 管理。
 * Session 状态不得依赖某个具体前端。
-* CLI 与 GUI 应能够读取和恢复同一类 Session。
+* TUI 与 GUI 应能够读取和恢复同一类 Session。
 * 持久化数据与运行时对象分离。
 
 ## 7. 代码要求

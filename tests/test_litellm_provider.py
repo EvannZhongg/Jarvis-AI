@@ -11,39 +11,47 @@ from agent_core import (
 from agent_core.providers import LiteLLMProvider
 
 
-class ResponseMessage:
-    content = "response"
-    tool_calls = None
-
-
-class ResponseChoice:
-    message = ResponseMessage()
-
-
-class CompletionResponse:
-    choices = [ResponseChoice()]
-    usage = type(
-        "Usage",
+def chunk(
+    content: str | None = None,
+    tool_calls: list[dict] | None = None,
+    usage: object | None = None,
+) -> object:
+    """Build a streamed chunk shaped like a LiteLLM delta."""
+    delta = {"content": content, "tool_calls": tool_calls}
+    choice = {"delta": delta, "finish_reason": None}
+    return type(
+        "Chunk",
         (),
-        {
-            "prompt_tokens": 12,
-            "completion_tokens": 5,
-            "total_tokens": 17,
-        },
+        {"choices": [choice], "usage": usage},
     )()
+
+
+USAGE = type(
+    "Usage",
+    (),
+    {
+        "prompt_tokens": 12,
+        "completion_tokens": 5,
+        "total_tokens": 17,
+    },
+)()
 
 
 class LiteLLMProviderTest(unittest.TestCase):
     @patch("agent_core.providers.litellm_provider.token_counter")
-    @patch(
-        "agent_core.providers.litellm_provider.completion",
-        return_value=CompletionResponse(),
-    )
+    @patch("agent_core.providers.litellm_provider.completion")
     def test_passes_configured_model_url_key_and_output_limit(
         self,
         completion_mock,
         token_counter_mock,
     ) -> None:
+        completion_mock.return_value = iter(
+            [
+                chunk(content="resp"),
+                chunk(content="onse"),
+                chunk(usage=USAGE),
+            ]
+        )
         provider = LiteLLMProvider(
             model="openai/test-model",
             base_url="https://example.com/v1",
@@ -59,9 +67,11 @@ class LiteLLMProviderTest(unittest.TestCase):
         token_counter_mock.return_value = 12
 
         input_tokens = provider.count_input_tokens(request)
-        response = provider.complete(request)
+        deltas: list[str] = []
+        response = provider.stream(request, deltas.append)
 
         self.assertEqual(input_tokens, 12)
+        self.assertEqual(deltas, ["resp", "onse"])
         self.assertEqual(response.content, "response")
         self.assertEqual(
             response.usage,
@@ -87,6 +97,8 @@ class LiteLLMProviderTest(unittest.TestCase):
                 {"role": "system", "content": "You are helpful."},
                 {"role": "user", "content": "hello"},
             ],
+            stream=True,
+            stream_options={"include_usage": True},
             max_tokens=100,
         )
 
@@ -95,33 +107,30 @@ class LiteLLMProviderTest(unittest.TestCase):
         self,
         completion_mock,
     ) -> None:
-        response_message = type(
-            "ResponseMessage",
-            (),
-            {
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "call-1",
-                        "type": "function",
-                        "function": {
-                            "name": "read_file",
-                            "arguments": '{"path": "README.md"}',
-                        },
-                    }
-                ],
-            },
-        )()
-        completion_mock.return_value = type(
-            "CompletionResponse",
-            (),
-            {
-                "choices": [
-                    type("ResponseChoice", (), {"message": response_message})()
-                ],
-                "usage": None,
-            },
-        )()
+        completion_mock.return_value = iter(
+            [
+                chunk(
+                    tool_calls=[
+                        {
+                            "index": 0,
+                            "id": "call-1",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": '{"path"',
+                            },
+                        }
+                    ]
+                ),
+                chunk(
+                    tool_calls=[
+                        {
+                            "index": 0,
+                            "function": {"arguments": ': "README.md"}'},
+                        }
+                    ]
+                ),
+            ]
+        )
         provider = LiteLLMProvider(
             model="openai/test-model",
             max_context_tokens=1000,
@@ -137,7 +146,7 @@ class LiteLLMProviderTest(unittest.TestCase):
             },
         )
 
-        response = provider.complete(
+        response = provider.stream(
             LLMRequest(
                 system_prompt="You are helpful.",
                 messages=(
@@ -160,7 +169,8 @@ class LiteLLMProviderTest(unittest.TestCase):
                     ),
                 ),
                 tools=(tool,),
-            )
+            ),
+            lambda text: None,
         )
 
         self.assertEqual(
@@ -200,6 +210,8 @@ class LiteLLMProviderTest(unittest.TestCase):
                     "tool_call_id": "previous-call",
                 },
             ],
+            stream=True,
+            stream_options={"include_usage": True},
             tools=[
                 {
                     "type": "function",

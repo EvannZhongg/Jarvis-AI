@@ -1,6 +1,10 @@
 # Jarvis
 
+终端 AI Agent：Python Agent Runtime + TypeScript（Ink + React）TUI。
+
 ## 安装
+
+需要 Python >= 3.11 与 Node.js >= 22。
 
 ```bash
 python -m venv .venv
@@ -8,15 +12,48 @@ source .venv/bin/activate
 python -m pip install jarvis-agent
 ```
 
-## 配置
-
-安装后初始化配置：
+从源码安装时需要先构建终端界面：
 
 ```bash
-jarvis --init
+npm install --prefix interfaces/tui
+npm run build --prefix interfaces/tui
+python -m pip install -e .
 ```
 
-默认会在 `~/.jarvis/` 下生成：
+## 使用
+
+在任意目录下执行：
+
+```bash
+jarvis
+```
+
+当前目录会作为 Workspace。可选参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--workspace <path>` | 指定 Workspace，默认当前目录 |
+| `--session <id>` | 恢复已有 Session |
+| `--config <path>` | 指定 Provider 配置文件 |
+| `--agent-config <path>` | 指定 Agent 行为配置文件 |
+
+按键：
+
+| 按键 | 作用 |
+| --- | --- |
+| `Enter` | 提交输入；Agent 执行中输入会排队 |
+| `←` / `→` | 在 shell 授权中切换 Allow / Deny |
+| `Enter` | 确认当前授权选项 |
+| `Esc` | 拒绝授权；Agent 执行中取消当前轮次 |
+| `Ctrl+C` | 取消当前轮次；空输入时退出 |
+| `Ctrl+D` | 退出 |
+
+shell 命令授权使用左右方向键选择，默认停在 `Allow`，按 `Enter` 确认；
+按 `Esc` 直接拒绝。
+
+## 配置
+
+首次运行会在 `~/.jarvis/` 下自动生成：
 
 ```text
 ~/.jarvis/
@@ -122,10 +159,10 @@ jarvis --workspace ~/projects/another-project
 
 Workspace 会作为显式对象传入 Agent Runtime。`Soul.md` 使用
 `Current workspace: {{workspace}}` 模板显式声明 Workspace，加载 Prompt
-时替换为 `Current workspace: {{/absolute/path/to/project}}`。启动时 CLI
-也会输出解析后的绝对路径。
+时替换为 `Current workspace: {{/absolute/path/to/project}}`。启动后界面
+底部也会显示解析出的 Workspace 与模型。
 
-输入 `exit` 或 `quit` 退出。
+按 `Ctrl+D` 或在空输入时按 `Ctrl+C` 退出。
 
 每次模型请求都会将 `agent_core/prompts/Soul.md` 和当前 Workspace 作为
 系统指令加载到 `LLMRequest.system_prompt`。Agent Core 不决定系统指令在
@@ -214,7 +251,7 @@ LLMResponse(
 5. 重复调用模型，直到获得不包含 Tool Call 的最终文本。
 
 当前不设置 Agent Loop 总步数限制；完全相同的 Tool Call 在单轮中的连续
-执行次数由 `agent_config.json` 限制。CLI 根据 `tools` 配置注册
+执行次数由 `agent_config.json` 限制。Bridge 根据 `tools` 配置注册
 `ReadFileTool`、`EditFileTool`、`SearchFilesTool`、
 `ListDirectoryTool` 和 `ShellTool`。文件工具只接受 Workspace 内的相对
 路径；
@@ -230,7 +267,7 @@ LLMResponse(
 目录执行命令，并在每次执行前要求用户确认；结果包含退出码、标准输出和
 标准错误、是否超时及采用的超时秒数。
 
-启动时会显示自动生成的 Session ID。每轮成功对话都会把本轮新增的
+启动时界面底部会显示当前 Session ID。每轮成功对话都会把本轮新增的
 Session Items、发送给 LLM 的完整消息上下文和最终模型响应追加到
 `sessions/<SESSION_ID>/<SESSION_ID>.jsonl`。超过回灌上限的完整 Tool
 Result 保存在同一目录的 `<TOOL_CALL_ID>.txt` 中。
@@ -244,15 +281,10 @@ sessions/
 
 每个 Session 使用独立文件，文件中每行都是一个完整 JSON 对象。恢复
 Session 时只读取对应文件中的 `items`，因此 Tool Call 和 Tool Result
-也会进入后续模型上下文。CLI 将最终响应的 UTC 时间转换成本机时区后
-显示：
+也会进入后续模型上下文。
 
 `usage` 来自模型服务返回的 token 用量。如果服务商没有返回 usage，
 该字段记录为 `null`。
-
-```text
-Assistant [2026-09-09T16:00:00+08:00]: ...
-```
 
 使用 Session ID 恢复历史对话：
 
@@ -272,10 +304,51 @@ jarvis --config path/to/provider_config.json
 jarvis --agent-config path/to/agent_config.json
 ```
 
+## 架构
+
+Agent Runtime 与界面解耦。TUI 是 Node 进程，Agent Runtime 运行在独立的
+Python 子进程中，两者通过 stdio 上的 newline-delimited JSON 通信：
+
+```text
+jarvis (Python console script)
+  └─ node interfaces/tui/dist/app.js      Ink + React 界面，持有 TTY
+       └─ python -m interfaces.bridge      Agent Runtime
+            └─ agent_core                  与界面无关
+```
+
+```text
+Jarvis/
+├── agent_core/          Agent Runtime，不依赖任何界面
+└── interfaces/
+    ├── launch.py        jarvis 命令入口
+    ├── bridge/          Runtime 与协议的适配层
+    └── tui/             TypeScript + Ink + React 界面
+```
+
+`interfaces/bridge` 只负责把 `AgentEvent` 翻译成协议消息，不包含任何
+Agent 决策逻辑；界面只负责渲染协议消息和采集输入。Bridge 进程把 fd 1
+换成私有协议通道，其余输出重定向到 stderr，避免第三方库写 stdout 破坏
+协议流。
+
+模型回答以增量方式流式渲染：`LLMProvider.stream()` 在产出
+`LLMResponse` 的同时通过回调上报文本分片，Agent Loop 将其作为
+`AssistantMessageDeltaEvent` 发出。
+
+Agent 执行中按 `Esc` 或 `Ctrl+C` 会向 Runtime 发送 `SIGINT` 取消当前
+轮次。被取消的轮次不会写入 Session 文件，界面会显式标注
+`Cancelled (not saved)`。
+
 ## 测试
 
-测试使用 Mock Provider，不需要真实 API Key：
+Python 测试使用 Mock Provider，不需要真实 API Key：
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+终端界面测试：
+
+```bash
+npm test --prefix interfaces/tui
+npm run typecheck --prefix interfaces/tui
 ```

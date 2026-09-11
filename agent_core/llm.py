@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Callable
 
 from .session import Message
 from .tools import ToolCall, ToolDefinition
@@ -38,5 +39,15 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def complete(self, request: LLMRequest) -> LLMResponse:
+    def stream(
+        self,
+        request: LLMRequest,
+        on_text_delta: Callable[[str], None],
+    ) -> LLMResponse:
+        """Produce a response, reporting assistant text as it arrives.
+
+        ``on_text_delta`` receives incremental fragments, never cumulative
+        text. Implementations stay synchronous so the agent loop remains
+        blocking and single-threaded.
+        """
         raise NotImplementedError

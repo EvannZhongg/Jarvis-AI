@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_core import (
     Agent,
     AgentConfig,
+    AssistantMessageDeltaEvent,
     AssistantMessageEvent,
     ContextWindowExceededError,
     LLMProvider,
@@ -60,11 +61,13 @@ class MockProvider(LLMProvider):
         self.counted_requests.append(request)
         return self._input_tokens
 
-    def complete(self, request: LLMRequest) -> LLMResponse:
+    def stream(self, request: LLMRequest, on_text_delta) -> LLMResponse:
         self.requests.append(request)
         response = next(self._responses)
         if isinstance(response, str):
-            return LLMResponse(content=response)
+            response = LLMResponse(content=response)
+        if response.content:
+            on_text_delta(response.content)
         return response
 
 
@@ -332,6 +335,28 @@ class AgentTest(unittest.TestCase):
             ],
         )
         self.assertEqual(result.items, tuple(session.items))
+        self.assertEqual(
+            [
+                event
+                for event in events
+                if isinstance(event, AssistantMessageDeltaEvent)
+            ],
+            [
+                AssistantMessageDeltaEvent(
+                    text="I'll use the echo tool.",
+                    model_call_index=1,
+                ),
+                AssistantMessageDeltaEvent(
+                    text="tool completed",
+                    model_call_index=2,
+                ),
+            ],
+        )
+        events = [
+            event
+            for event in events
+            if not isinstance(event, AssistantMessageDeltaEvent)
+        ]
         self.assertEqual(
             events[0],
             AssistantMessageEvent(

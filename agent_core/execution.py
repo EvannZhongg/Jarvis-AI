@@ -67,6 +67,12 @@ class SubprocessCommandExecutor:
             timed_out = True
             os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate()
+        except BaseException:
+            # The command runs in its own process group, so an interrupted
+            # wait would otherwise leave it running detached.
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+            raise
 
         stdout, stderr = _limit_output(stdout, stderr)
         return CommandExecutionResult(

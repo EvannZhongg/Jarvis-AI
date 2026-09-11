@@ -1,0 +1,122 @@
+"""Translation between agent runtime events and protocol messages.
+
+The bridge speaks newline-delimited JSON over stdio. Keeping the
+translation pure makes it testable without a running agent.
+"""
+
+import json
+from datetime import datetime, timezone
+
+from agent_core import (
+    AgentEvent,
+    AssistantMessageDeltaEvent,
+    AssistantMessageEvent,
+    ToolBatchStartedEvent,
+    ToolCall,
+    ToolCallEvent,
+    ToolResultEvent,
+)
+from agent_core.llm import TokenUsage
+
+
+def encode(message: dict[str, object]) -> str:
+    return json.dumps(message, ensure_ascii=False)
+
+
+def decode(line: str) -> dict[str, object]:
+    message = json.loads(line)
+    if not isinstance(message, dict):
+        raise ValueError("protocol message must be a JSON object")
+    if not isinstance(message.get("type"), str):
+        raise ValueError("protocol message must have a string 'type'")
+    return message
+
+
+def format_timestamp(value: datetime) -> str:
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def tool_call_to_dict(tool_call: ToolCall) -> dict[str, object]:
+    return {
+        "id": tool_call.id,
+        "name": tool_call.name,
+        "arguments": tool_call.arguments,
+    }
+
+
+def usage_to_dict(usage: TokenUsage | None) -> dict[str, object] | None:
+    if usage is None:
+        return None
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "total_tokens": usage.total_tokens,
+    }
+
+
+def event_to_message(
+    event: AgentEvent,
+    turn_id: str,
+) -> dict[str, object]:
+    if isinstance(event, AssistantMessageDeltaEvent):
+        return {
+            "type": "assistant_delta",
+            "turn_id": turn_id,
+            "text": event.text,
+            "model_call_index": event.model_call_index,
+        }
+
+    if isinstance(event, AssistantMessageEvent):
+        return {
+            "type": "assistant_message",
+            "turn_id": turn_id,
+            "content": event.content,
+            "timestamp_utc": format_timestamp(event.timestamp_utc),
+            "model_call_index": event.model_call_index,
+        }
+
+    if isinstance(event, ToolBatchStartedEvent):
+        return {
+            "type": "tool_batch_started",
+            "turn_id": turn_id,
+            "model_call_index": event.model_call_index,
+            "tool_calls": [
+                tool_call_to_dict(tool_call)
+                for tool_call in event.tool_calls
+            ],
+        }
+
+    if isinstance(event, ToolCallEvent):
+        return {
+            "type": "tool_call",
+            "turn_id": turn_id,
+            "tool_call": tool_call_to_dict(event.tool_call),
+            "tool_index": event.tool_index,
+            "tool_count": event.tool_count,
+        }
+
+    if isinstance(event, ToolResultEvent):
+        result = event.tool_result
+        # Tool output is deliberately omitted: results can be large and
+        # are already offloaded to session artifacts by the normalizer.
+        return {
+            "type": "tool_result",
+            "turn_id": turn_id,
+            "tool_call_id": result.tool_call_id,
+            "name": result.name,
+            "ok": result.error is None,
+            "error": None
+            if result.error is None
+            else {
+                "type": result.error.type,
+                "message": result.error.message,
+            },
+            "tool_index": event.tool_index,
+            "tool_count": event.tool_count,
+        }
+
+    raise TypeError(f"unsupported agent event: {type(event).__name__}")

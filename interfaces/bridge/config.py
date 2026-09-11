@@ -25,7 +25,7 @@ def default_config_directory() -> Path:
 
 def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
     created = []
-    defaults = files("agent_cli.defaults")
+    defaults = files("interfaces.bridge.defaults")
     for filename in DEFAULT_CONFIG_FILENAMES:
         path = directory / filename
         if path.exists():

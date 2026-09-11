@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent_cli.config import (
+from interfaces.bridge.config import (
     ModelConfig,
     default_config_directory,
     initialize_default_configs,
@@ -14,7 +14,7 @@ from agent_cli.config import (
 
 class ConfigTest(unittest.TestCase):
     def test_uses_home_for_default_directory(self) -> None:
-        with patch("agent_cli.config.Path.home") as home:
+        with patch("interfaces.bridge.config.Path.home") as home:
             home.return_value = Path("/home/test")
 
             self.assertEqual(

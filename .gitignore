@@ -8,5 +8,7 @@ build/
 /provider_config.json
 /sessions.jsonl
 /sessions/
+node_modules/
+interfaces/tui/dist/
 CubeSandbox/
 nanobot/
