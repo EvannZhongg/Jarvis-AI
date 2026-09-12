@@ -252,23 +252,73 @@ class GuiTest(unittest.TestCase):
         self.assertEqual(bridge.cancelled, 1)
         self.assertEqual([m["type"] for m in bridge.sent], ["start"])
 
-    def test_refuses_a_second_page_while_one_is_connected(self) -> None:
+    def test_refuses_a_second_page_for_the_same_session(self) -> None:
+        """Locks are per session: a second page on it must be turned away."""
         bridge = FakeBridge(replies={"start": [{"type": "ready"}]})
         with (
             patch.object(server, "HANDOVER_TIMEOUT_SECONDS", 0.05),
             self.client(bridge) as client,
         ):
             with client.websocket_connect("/api/session") as first:
-                first.send_json({"type": "start", "session_id": None})
+                first.send_json({"type": "start", "session_id": "shared"})
                 self.assertEqual(first.receive_json()["type"], "ready")
 
+                # The session id arrives in the opening frame, so the
+                # second page must announce it before the server can
+                # tell that another page already drives that session.
                 with client.websocket_connect("/api/session") as second:
+                    second.send_json(
+                        {"type": "start", "session_id": "shared"}
+                    )
                     message = second.receive_json()
 
                 first.send_json({"type": "cancel"})
                 _wait_for(lambda: bridge.closed)
 
         self.assertEqual(message["error"]["type"], "SessionBusy")
+
+    def test_runs_different_sessions_concurrently(self) -> None:
+        """Two pages on different sessions must not block each other."""
+        bridges: list[FakeBridge] = []
+
+        async def spawn(cls: object, workspace: Workspace) -> FakeBridge:
+            # Every connection drives its own agent process, so hand
+            # each one a separate fake rather than a shared queue.
+            bridge = FakeBridge(replies={"start": [{"type": "ready"}]})
+            bridges.append(bridge)
+            return bridge
+
+        with (
+            patch.object(server, "HANDOVER_TIMEOUT_SECONDS", 0.05),
+            patch.object(
+                server.BridgeProcess,
+                "spawn",
+                classmethod(spawn),
+            ),
+            self.client() as client,
+        ):
+            with client.websocket_connect("/api/session") as first:
+                first.send_json({"type": "start", "session_id": "one"})
+                self.assertEqual(first.receive_json()["type"], "ready")
+
+                # The second session stays free even though the first
+                # page is still connected and holding its own lock.
+                with client.websocket_connect("/api/session") as second:
+                    second.send_json({"type": "start", "session_id": "two"})
+                    self.assertEqual(
+                        second.receive_json()["type"],
+                        "ready",
+                    )
+                    second.send_json({"type": "cancel"})
+                    _wait_for(lambda: bridges[1].closed)
+
+                first.send_json({"type": "cancel"})
+                _wait_for(lambda: bridges[0].closed)
+
+        self.assertEqual(
+            [bridge.sent[0]["session_id"] for bridge in bridges],
+            ["one", "two"],
+        )
 
     def test_accepts_a_reconnect_once_the_previous_page_is_gone(self) -> None:
         """Switching model reconnects; the agent must not look busy."""
