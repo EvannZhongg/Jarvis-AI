@@ -38,7 +38,7 @@ function MarkdownText() {
 
 function AssistantMessage() {
   return <MessagePrimitive.Root className="assistant-message">
-    <div className="assistant-label"><span className="assistant-avatar"><img src="/nosis-avatar.png" alt="" /></span>Nosis</div>
+    <div className="assistant-label"><span className="assistant-avatar"><img src="/nosis-avatar-128.png" alt="" /></span>Nosis</div>
     <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCard } }} /></div>
   </MessagePrimitive.Root>;
 }
