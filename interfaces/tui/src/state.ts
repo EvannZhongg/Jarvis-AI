@@ -195,6 +195,12 @@ function applyMessage(state: State, message: Incoming): State {
         ],
       };
 
+    case 'context_archived':
+      return {
+        ...state,
+        entries: [...state.entries, { kind: 'notice', id: nextId('notice'), level: 'info', text: `Context compressed (checkpoint ${message.checkpoint_number}).` }],
+      };
+
     case 'tool_result':
       return {
         ...state,

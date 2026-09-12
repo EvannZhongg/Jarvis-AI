@@ -85,12 +85,18 @@ class ToolResultEvent:
     tool_count: int
 
 
+@dataclass(frozen=True)
+class ContextArchivedEvent:
+    checkpoint_number: int
+
+
 AgentEvent: TypeAlias = (
     AssistantMessageDeltaEvent
     | AssistantMessageEvent
     | ToolBatchStartedEvent
     | ToolCallEvent
     | ToolResultEvent
+    | ContextArchivedEvent
 )
 
 
@@ -157,7 +163,9 @@ class Agent:
                 input_tokens >= self._context_budget
                 and self._archivable_items()
             ):
-                self._archive_context()
+                checkpoint_number = self._archive_context()
+                if on_event is not None:
+                    on_event(ContextArchivedEvent(checkpoint_number))
                 continue
             hard_limit = (
                 self._context_budget
@@ -309,7 +317,7 @@ class Agent:
             max_output_tokens=self._config.max_output_tokens,
         )
 
-    def _archive_context(self) -> None:
+    def _archive_context(self) -> int:
         """Compress the unarchived transcript into the session checkpoint."""
         previous = self._session.archived_summary
         items = self._archivable_items()
@@ -334,6 +342,7 @@ class Agent:
             summary,
             self._session.archived_item_count + len(items),
         )
+        return self._session.archived_item_count
 
     def _archivable_items(self) -> list[Message]:
         recent = self._session.recent_items

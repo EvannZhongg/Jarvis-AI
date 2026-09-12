@@ -36,6 +36,7 @@ export type Incoming =
       message_count: number;
     }
   | { type: 'assistant_delta'; turn_id: string; text: string; model_call_index: number }
+  | { type: 'context_archived'; turn_id: string; checkpoint_number: number }
   | {
       type: 'assistant_message';
       turn_id: string;

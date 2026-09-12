@@ -36,6 +36,9 @@ export function applyMessage(
     case "assistant_message":
       return { items: settleAssistant(items, message.content) };
 
+    case "context_archived":
+      return { items, notice: { level: "info", text: `上下文已压缩（checkpoint ${message.checkpoint_number}）。` } };
+
     case "tool_batch_started":
       return {
         items: [

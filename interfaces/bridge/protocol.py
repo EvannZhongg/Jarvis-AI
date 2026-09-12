@@ -11,6 +11,7 @@ from agent_core import (
     AgentEvent,
     AssistantMessageDeltaEvent,
     AssistantMessageEvent,
+    ContextArchivedEvent,
     ToolBatchStartedEvent,
     ToolCall,
     ToolCallEvent,
@@ -68,6 +69,13 @@ def event_to_message(
             "turn_id": turn_id,
             "text": event.text,
             "model_call_index": event.model_call_index,
+        }
+
+    if isinstance(event, ContextArchivedEvent):
+        return {
+            "type": "context_archived",
+            "turn_id": turn_id,
+            "checkpoint_number": event.checkpoint_number,
         }
 
     if isinstance(event, AssistantMessageEvent):
