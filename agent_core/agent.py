@@ -1,4 +1,5 @@
 import json
+import inspect
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable, TypeAlias
@@ -57,6 +58,11 @@ class AssistantMessageDeltaEvent:
     text: str
     model_call_index: int
 
+@dataclass(frozen=True)
+class ReasoningDeltaEvent:
+    text: str
+    model_call_index: int
+
 
 @dataclass(frozen=True)
 class AssistantMessageEvent:
@@ -92,6 +98,7 @@ class ContextArchivedEvent:
 
 AgentEvent: TypeAlias = (
     AssistantMessageDeltaEvent
+    | ReasoningDeltaEvent
     | AssistantMessageEvent
     | ToolBatchStartedEvent
     | ToolCallEvent
@@ -207,7 +214,14 @@ class Agent:
                         )
                     )
 
-            response = self._provider.stream(request, on_text_delta)
+            def on_reasoning_delta(text: str, model_call_index: int = model_call_index) -> None:
+                if on_event is not None:
+                    on_event(ReasoningDeltaEvent(text=text, model_call_index=model_call_index))
+
+            if len(inspect.signature(self._provider.stream).parameters) >= 3:
+                response = self._provider.stream(request, on_text_delta, on_reasoning_delta)
+            else:
+                response = self._provider.stream(request, on_text_delta)
 
             if response.tool_calls:
                 next_tool_call_key = previous_tool_call_key
@@ -237,6 +251,7 @@ class Agent:
                     content=response.content,
                     timestamp_utc=assistant_timestamp_utc,
                     tool_calls=response.tool_calls,
+                    reasoning=response.reasoning,
                 )
                 if response.content and on_event is not None:
                     on_event(
@@ -296,6 +311,7 @@ class Agent:
                 "assistant",
                 response.content,
                 timestamp_utc=response_timestamp_utc,
+                reasoning=response.reasoning,
             )
             if on_event is not None:
                 on_event(
@@ -390,6 +406,10 @@ class Agent:
             if item.role == "user"
             or (item.role == "assistant" and not item.tool_calls)
         ] + list(current)
+        visible = [
+            Message(item.role, item.content, item.timestamp_utc, item.tool_calls, item.tool_call_id)
+            for item in visible
+        ]
         result: list[Message] = []
         for index, item in enumerate(visible):
             if item.role == "user":

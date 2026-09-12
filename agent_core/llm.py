@@ -24,6 +24,7 @@ class TokenUsage:
 @dataclass(frozen=True)
 class LLMResponse:
     content: str | None
+    reasoning: str | None = None
     tool_calls: tuple[ToolCall, ...] = ()
     usage: TokenUsage | None = None
 
@@ -43,6 +44,7 @@ class LLMProvider(ABC):
         self,
         request: LLMRequest,
         on_text_delta: Callable[[str], None],
+        on_reasoning_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         """Produce a response, reporting assistant text as it arrives.
 

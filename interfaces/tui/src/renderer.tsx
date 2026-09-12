@@ -25,6 +25,16 @@ function EntryView({ entry }: { entry: Entry }): React.ReactElement {
     );
   }
 
+  if (entry.kind === 'reasoning') {
+    return (
+      <Box>
+        <Text dimColor italic>
+          {entry.text}
+        </Text>
+      </Box>
+    );
+  }
+
   if (entry.kind === 'notice') {
     return (
       <Box marginTop={1}>

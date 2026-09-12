@@ -6,6 +6,7 @@ export type SessionItem = {
   timestamp_utc?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  reasoning?: string | null;
 };
 
 export type Session = { session_id: string; items: SessionItem[] };

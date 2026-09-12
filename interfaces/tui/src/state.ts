@@ -12,6 +12,7 @@ export type Status =
 export type Entry =
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; settled: boolean; timestamp_utc?: string }
+  | { kind: 'reasoning'; id: string; text: string }
   | {
       kind: 'tool';
       id: string;
@@ -168,6 +169,8 @@ function applyMessage(state: State, message: Incoming): State {
         status: state.status === 'cancelling' ? state.status : 'streaming',
         entries: appendDelta(state.entries, message.text),
       };
+    case 'reasoning_delta':
+      return { ...state, entries: [...state.entries, { kind: 'reasoning', id: nextId('reasoning'), text: message.text }] };
 
     case 'assistant_message':
       return { ...state, entries: settleAssistant(state.entries, message.content, message.timestamp_utc) };

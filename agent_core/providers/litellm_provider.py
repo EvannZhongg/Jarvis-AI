@@ -53,6 +53,7 @@ class LiteLLMProvider(LLMProvider):
         self,
         request: LLMRequest,
         on_text_delta: Callable[[str], None],
+        on_reasoning_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         arguments = dict(
             model=self._model,
@@ -71,6 +72,7 @@ class LiteLLMProvider(LLMProvider):
             arguments["max_tokens"] = request.max_output_tokens
 
         content = ""
+        reasoning = ""
         tool_call_fragments: dict[int, _ToolCallFragment] = {}
         usage = None
 
@@ -92,11 +94,19 @@ class LiteLLMProvider(LLMProvider):
                 content += text
                 on_text_delta(text)
 
+            for field in ("reasoning_content", "reasoning", "thinking"):
+                value = _get_field(delta, field)
+                if isinstance(value, str) and value:
+                    reasoning += value
+                    if on_reasoning_delta is not None:
+                        on_reasoning_delta(value)
+
             for tool_call in _get_field(delta, "tool_calls") or []:
                 _accumulate_tool_call(tool_call_fragments, tool_call)
 
         return LLMResponse(
             content=content or None,
+            reasoning=reasoning or None,
             tool_calls=tuple(
                 fragment.to_tool_call()
                 for _, fragment in sorted(tool_call_fragments.items())

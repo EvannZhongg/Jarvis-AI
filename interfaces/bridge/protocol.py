@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from agent_core import (
     AgentEvent,
     AssistantMessageDeltaEvent,
+    ReasoningDeltaEvent,
     AssistantMessageEvent,
     ContextArchivedEvent,
     ToolBatchStartedEvent,
@@ -70,6 +71,8 @@ def event_to_message(
             "text": event.text,
             "model_call_index": event.model_call_index,
         }
+    if isinstance(event, ReasoningDeltaEvent):
+        return {"type": "reasoning_delta", "turn_id": turn_id, "text": event.text, "model_call_index": event.model_call_index}
 
     if isinstance(event, ContextArchivedEvent):
         return {

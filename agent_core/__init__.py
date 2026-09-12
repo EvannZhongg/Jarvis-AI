@@ -3,6 +3,7 @@ from .agent import (
     AgentEvent,
     AgentRunResult,
     AssistantMessageDeltaEvent,
+    ReasoningDeltaEvent,
     AssistantMessageEvent,
     ContextArchivedEvent,
     ContextWindowExceededError,

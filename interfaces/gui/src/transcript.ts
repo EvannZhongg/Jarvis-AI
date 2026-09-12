@@ -31,6 +31,8 @@ export function applyMessage(
   switch (message.type) {
     case "assistant_delta":
       return { items: appendDelta(items, message.text) };
+    case "reasoning_delta":
+      return { items: appendReasoning(items, message.text) };
 
     case "assistant_message":
       return { items: settleAssistant(items, message.content, message.timestamp_utc) };
@@ -115,6 +117,14 @@ function appendDelta(items: TranscriptItem[], text: string): TranscriptItem[] {
     ];
   }
   return [...items, { role: "assistant", content: text, streaming: true }];
+}
+
+function appendReasoning(items: TranscriptItem[], text: string): TranscriptItem[] {
+  const last = items[items.length - 1];
+  if (last?.role === "assistant" && last.streaming && last.reasoning !== undefined) {
+    return [...items.slice(0, -1), { ...last, reasoning: (last.reasoning ?? "") + text }];
+  }
+  return [...items, { role: "assistant", content: null, reasoning: text, streaming: true }];
 }
 
 function settleAssistant(

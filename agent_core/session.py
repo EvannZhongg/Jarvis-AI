@@ -16,6 +16,7 @@ class Message:
     timestamp_utc: datetime | None = None
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
+    reasoning: str | None = None
 
 
 @dataclass
@@ -51,6 +52,7 @@ class Session:
         timestamp_utc: datetime | None = None,
         tool_calls: tuple[ToolCall, ...] = (),
         tool_call_id: str | None = None,
+        reasoning: str | None = None,
     ) -> None:
         self.items.append(
             Message(
@@ -59,5 +61,6 @@ class Session:
                 timestamp_utc=timestamp_utc,
                 tool_calls=tool_calls,
                 tool_call_id=tool_call_id,
+                reasoning=reasoning,
             )
         )

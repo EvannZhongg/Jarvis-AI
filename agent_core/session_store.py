@@ -95,6 +95,8 @@ class JsonlSessionStore:
                 ),
             },
         }
+        if response.reasoning is not None:
+            record["response"]["reasoning"] = response.reasoning
         if response.tool_calls:
             record["response"]["tool_calls"] = [
                 {
@@ -161,6 +163,8 @@ def _message_to_dict(message: Message) -> dict[str, object]:
         ]
     if message.tool_call_id is not None:
         data["tool_call_id"] = message.tool_call_id
+    if message.reasoning is not None:
+        data["reasoning"] = message.reasoning
     return data
 
 
@@ -184,6 +188,7 @@ def _message_from_dict(data: dict[str, object]) -> Message:
             for tool_call in tool_calls
         ),
         tool_call_id=data.get("tool_call_id"),
+        reasoning=data.get("reasoning") if isinstance(data.get("reasoning"), str) else None,
     )
 
 
