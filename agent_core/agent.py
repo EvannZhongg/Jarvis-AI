@@ -279,11 +279,6 @@ class Agent:
                 response_timestamp_utc=response_timestamp_utc,
             )
 
-    def _archive_context(self, turn_start: int) -> int:
-        self._context.begin_turn(turn_start)
-        return self._context.archive()
-
-
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:
     normalized_arguments = json.dumps(
         tool_call.arguments,

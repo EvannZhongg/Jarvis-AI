@@ -528,7 +528,8 @@ class AgentTest(unittest.TestCase):
             workspace=TEST_WORKSPACE,
         )
 
-        agent._archive_context(turn_start=len(session.items))
+        agent._context.begin_turn(len(session.items))
+        agent._context.archive()
 
         archived = provider.requests[0].messages
         self.assertEqual(
