@@ -208,6 +208,25 @@ describe('App', () => {
     await waitFor(() => expect(sent.some((m) => m.type === '__cancel')).toBe(true));
   });
 
+  it('renders streamed reasoning before the answer', async () => {
+    const { lastFrame } = renderApp();
+    await waitForReady(lastFrame);
+    emit({
+      type: 'reasoning_delta',
+      turn_id: 't1',
+      text: 'weighing ',
+      model_call_index: 1,
+    });
+    emit({
+      type: 'reasoning_delta',
+      turn_id: 't1',
+      text: 'the options',
+      model_call_index: 1,
+    });
+    // Both deltas land in one live entry, so the frame carries the whole text.
+    await waitFor(() => expect(lastFrame()).toContain('weighing the options'));
+  });
+
   it('renders streamed text and the approval prompt', async () => {
     const { lastFrame } = renderApp();
     await waitForReady(lastFrame);

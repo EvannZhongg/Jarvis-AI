@@ -98,6 +98,73 @@ describe('reducer', () => {
     expect(assistants[0]).toMatchObject({ text: 'Hello!', settled: true });
   });
 
+  it('accumulates reasoning deltas into one entry', () => {
+    let state = ready();
+    state = reducer(state, { type: 'submit', turnId: 't1', text: 'hi' });
+    for (const text of ['Let me ', 'weigh ', 'the options.']) {
+      state = reducer(state, {
+        type: 'message',
+        message: { type: 'reasoning_delta', turn_id: 't1', text, model_call_index: 1 },
+      });
+    }
+    const reasoning = state.entries.filter((entry) => entry.kind === 'reasoning');
+    expect(reasoning).toHaveLength(1);
+    expect(reasoning[0]).toMatchObject({
+      text: 'Let me weigh the options.',
+      settled: false,
+    });
+  });
+
+  it('closes the reasoning entry once the answer is settled', () => {
+    let state = ready();
+    state = reducer(state, { type: 'submit', turnId: 't1', text: 'hi' });
+    state = reducer(state, {
+      type: 'message',
+      message: { type: 'reasoning_delta', turn_id: 't1', text: 'weighing', model_call_index: 1 },
+    });
+    state = reducer(state, {
+      type: 'message',
+      message: {
+        type: 'assistant_message',
+        turn_id: 't1',
+        content: 'Hello!',
+        timestamp_utc: '2026-09-09T08:00:00.000000Z',
+        model_call_index: 1,
+      },
+    });
+
+    expect(state.entries.map((entry) => entry.kind)).toEqual([
+      'user',
+      'reasoning',
+      'assistant',
+    ]);
+    expect(state.entries[1]).toMatchObject({ text: 'weighing', settled: true });
+  });
+
+  it('closes reasoning at the end of a turn and opens a new entry later', () => {
+    let state = ready();
+    state = reducer(state, { type: 'submit', turnId: 't1', text: 'hi' });
+    state = reducer(state, {
+      type: 'message',
+      message: { type: 'reasoning_delta', turn_id: 't1', text: 'first', model_call_index: 1 },
+    });
+    state = reducer(state, {
+      type: 'message',
+      message: { type: 'turn_completed', turn_id: 't1', usage: null },
+    });
+    expect(state.entries.at(-1)).toMatchObject({ kind: 'reasoning', settled: true });
+
+    state = reducer(state, { type: 'submit', turnId: 't2', text: 'again' });
+    state = reducer(state, {
+      type: 'message',
+      message: { type: 'reasoning_delta', turn_id: 't2', text: 'second', model_call_index: 1 },
+    });
+    const reasoning = state.entries.filter((entry) => entry.kind === 'reasoning');
+    expect(reasoning).toHaveLength(2);
+    expect(reasoning[0]).toMatchObject({ text: 'first', settled: true });
+    expect(reasoning[1]).toMatchObject({ text: 'second', settled: false });
+  });
+
   it('resolves a tool entry in place', () => {
     let state = ready();
     state = reducer(state, {

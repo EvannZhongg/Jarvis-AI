@@ -12,7 +12,7 @@ export type Status =
 export type Entry =
   | { kind: 'user'; id: string; text: string }
   | { kind: 'assistant'; id: string; text: string; settled: boolean; timestamp_utc?: string }
-  | { kind: 'reasoning'; id: string; text: string }
+  | { kind: 'reasoning'; id: string; text: string; settled: boolean }
   | {
       kind: 'tool';
       id: string;
@@ -72,6 +72,42 @@ function appendDelta(entries: Entry[], text: string): Entry[] {
   return [...entries, { kind: 'assistant', id: nextId('assistant'), text, settled: false }];
 }
 
+/**
+ * Appends to the open reasoning entry, creating it on the first delta.
+ *
+ * A model call streams reasoning as many small deltas, so they are merged
+ * into one entry the same way assistant text is.
+ */
+function appendReasoning(entries: Entry[], text: string): Entry[] {
+  const last = entries[entries.length - 1];
+  if (last && last.kind === 'reasoning' && !last.settled) {
+    return [...entries.slice(0, -1), { ...last, text: last.text + text }];
+  }
+  return [
+    ...entries,
+    { kind: 'reasoning', id: nextId('reasoning'), text, settled: false },
+  ];
+}
+
+/**
+ * Closes every reasoning entry that is still open.
+ *
+ * Only one can be open at a time: deltas extend the trailing entry, and any
+ * other action closes it. Ink writes the entries before the open one once
+ * and never again, so they must stop changing before they leave the live
+ * region.
+ */
+function settleReasoning(state: State): State {
+  const open = state.entries.some((entry) => entry.kind === 'reasoning' && !entry.settled);
+  if (!open) return state;
+  return {
+    ...state,
+    entries: state.entries.map((entry) =>
+      entry.kind === 'reasoning' && !entry.settled ? { ...entry, settled: true } : entry,
+    ),
+  };
+}
+
 function settleAssistant(entries: Entry[], content: string, timestamp_utc?: string): Entry[] {
   const last = entries[entries.length - 1];
   if (last && last.kind === 'assistant' && !last.settled) {
@@ -94,6 +130,16 @@ function resolveTool(
 }
 
 export function reducer(state: State, action: Action): State {
+  const next = reduceAction(state, action);
+  // Reasoning deltas extend the open entry; any other action means the model
+  // moved on to content, a tool call, or the end of the turn.
+  const streaming =
+    action.type === 'message' && action.message.type === 'reasoning_delta';
+  return streaming ? next : settleReasoning(next);
+}
+
+/** The state transition for a single action. */
+function reduceAction(state: State, action: Action): State {
   switch (action.type) {
     case 'submit':
       return {
@@ -170,7 +216,10 @@ function applyMessage(state: State, message: Incoming): State {
         entries: appendDelta(state.entries, message.text),
       };
     case 'reasoning_delta':
-      return { ...state, entries: [...state.entries, { kind: 'reasoning', id: nextId('reasoning'), text: message.text }] };
+      return {
+        ...state,
+        entries: appendReasoning(state.entries, message.text),
+      };
 
     case 'assistant_message':
       return { ...state, entries: settleAssistant(state.entries, message.content, message.timestamp_utc) };

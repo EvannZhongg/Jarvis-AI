@@ -74,7 +74,8 @@ function EntryView({ entry }: { entry: Entry }): React.ReactElement {
  */
 export function Transcript({ state }: { state: State }): React.ReactElement {
   const isLive = (entry: Entry): boolean =>
-    (entry.kind === 'assistant' && !entry.settled) ||
+    ((entry.kind === 'assistant' || entry.kind === 'reasoning') &&
+      !entry.settled) ||
     (entry.kind === 'tool' && entry.state === 'running');
 
   let split = state.entries.length;
