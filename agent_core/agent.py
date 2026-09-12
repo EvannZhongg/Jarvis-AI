@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from typing import Callable, Iterable, TypeAlias
 
 from .config import AgentConfig
+from .context_manager import ContextManager, ContextWindowExceededError
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
-from .prompts import load_consolidator_prompt
 from .session import Message, Session
 from .tool_result import ToolResultNormalizer
 from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
@@ -20,25 +20,6 @@ class ToolCallLimitExceededError(RuntimeError):
         super().__init__(
             f"tool call '{tool_name}' exceeded the maximum of "
             f"{limit} identical consecutive executions"
-        )
-
-
-class ContextWindowExceededError(RuntimeError):
-    def __init__(
-        self,
-        input_tokens: int,
-        max_context_tokens: int,
-        max_output_tokens: int,
-    ) -> None:
-        self.input_tokens = input_tokens
-        self.max_context_tokens = max_context_tokens
-        self.max_output_tokens = max_output_tokens
-        self.max_input_tokens = max_context_tokens - max_output_tokens
-        super().__init__(
-            f"input context contains {input_tokens} tokens, exceeding the "
-            f"maximum of {self.max_input_tokens} tokens "
-            f"({max_context_tokens} context tokens minus "
-            f"{max_output_tokens} reserved output tokens)"
         )
 
 
@@ -121,8 +102,6 @@ class Agent:
     ) -> None:
         self._provider = provider
         self._session = session
-        self._workspace = workspace
-        self._system_prompt = system_prompt
         self._config = config
         self._now = now or (lambda: datetime.now(timezone.utc))
         self._tools = ToolRegistry(tools, policy=tool_policy)
@@ -130,39 +109,12 @@ class Agent:
             tool_result_normalizer
             or ToolResultNormalizer(workspace, session.session_id)
         )
-        if self._config.max_output_tokens >= self._provider.max_context_tokens:
-            raise ValueError(
-                "max_output_tokens must be less than the provider's "
-                "max_context_tokens"
-            )
-        self._hard_limit = (
-            self._provider.max_context_tokens
-            - self._config.max_output_tokens
+        self._context = ContextManager(
+            provider=provider,
+            session=session,
+            system_prompt=system_prompt,
+            config=config,
         )
-        self._turn_start: int | None = None
-        if self._hard_limit <= 1:
-            raise ValueError(
-                "max_context_tokens minus max_output_tokens must be greater "
-                "than 1"
-            )
-        compression = self._config.context
-        self._compression_enabled = compression.enabled
-        trigger_ratio, target_ratio = _compression_ratios(
-            self._provider.max_context_tokens,
-            compression.trigger_ratio,
-            compression.target_ratio,
-        )
-        self._compression_threshold = max(
-            1, int(self._hard_limit * trigger_ratio)
-        )
-        self._compression_target = max(
-            1, int(self._hard_limit * target_ratio)
-        )
-        if self._compression_enabled and (
-            self._compression_target >= self._compression_threshold
-            or self._compression_threshold >= self._hard_limit
-        ):
-            raise ValueError("compression target must be less than threshold")
 
     def run(
         self,
@@ -170,7 +122,7 @@ class Agent:
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> AgentRunResult:
         turn_start = len(self._session.items)
-        self._turn_start = turn_start
+        self._context.begin_turn(turn_start)
         model_call_index = 0
         previous_tool_call_key: tuple[str, str] | None = None
         identical_tool_calls = 0
@@ -183,17 +135,14 @@ class Agent:
         )
 
         while True:
-            request = self._build_request()
+            request = self._context.build_request(self._tools.definitions)
             input_tokens = self._provider.count_input_tokens(request)
-            if self._compression_enabled and (
-                input_tokens >= self._compression_threshold
-                and self._archivable_items(turn_start)
-            ):
-                checkpoint_number = self._archive_context(turn_start)
+            if self._context.should_archive(input_tokens):
+                checkpoint_number = self._context.archive()
                 if on_event is not None:
                     on_event(ContextArchivedEvent(checkpoint_number))
                 continue
-            if input_tokens > self._hard_limit:
+            if input_tokens > self._context.hard_limit:
                 raise ContextWindowExceededError(
                     input_tokens=input_tokens,
                     max_context_tokens=self._provider.max_context_tokens,
@@ -330,153 +279,9 @@ class Agent:
                 response_timestamp_utc=response_timestamp_utc,
             )
 
-    def _build_request(self) -> LLMRequest:
-        system_prompt = self._system_prompt
-        if self._session.archived_summary is not None:
-            system_prompt = (
-                f"{system_prompt}\n\n[Archived Context Summary]\n"
-                f"{self._session.archived_summary}"
-            )
-        return LLMRequest(
-            system_prompt=system_prompt,
-            messages=tuple(self._context_messages()),
-            tools=self._tools.definitions,
-            max_output_tokens=self._config.max_output_tokens,
-        )
-
     def _archive_context(self, turn_start: int) -> int:
-        """Compress the unarchived transcript into the session checkpoint."""
-        previous = self._session.archived_summary
-        items = self._archivable_items(turn_start)
-        system_prompt = load_consolidator_prompt()
-        system_prompt = (
-            f"{system_prompt}\n\nTarget checkpoint size: approximately "
-            f"{self._compression_target} tokens."
-        )
-        if previous is not None:
-            system_prompt = (
-                f"{system_prompt}\n\n[Archived Context Summary]\n{previous}"
-            )
-        historical_items = [_historical_message(item) for item in items]
-        timeline = _timeline_message(historical_items)
-        request = LLMRequest(
-            system_prompt=system_prompt,
-            messages=tuple([timeline, *historical_items]),
-            max_output_tokens=self._config.max_output_tokens,
-        )
-        response = self._provider.stream(request, lambda _text: None, None)
-        summary = response.content.strip() if response.content else ""
-        if response.tool_calls or not summary:
-            raise ValueError("context consolidator must return text content")
-        self._session.set_archived_summary(
-            summary,
-            self._session.archived_item_count + len(items),
-        )
-        return self._session.archived_item_count
-
-    def _archivable_items(self, turn_start: int) -> list[Message]:
-        """Return only complete turns preceding the active run.
-
-        ``turn_start`` is captured before the current user message is added,
-        so assistant/tool messages produced by the active model loop can
-        never enter a checkpoint.
-        """
-        archive_start = self._session.archived_item_count
-        archive_end = max(
-            archive_start,
-            min(turn_start, len(self._session.items)),
-        )
-        return self._session.items[archive_start:archive_end]
-
-    def _context_messages(self) -> list[Message]:
-        items = self._session.recent_items
-        if self._turn_start is None:
-            return list(items)
-        historical_count = max(
-            0,
-            min(
-                self._turn_start - self._session.archived_item_count,
-                len(items),
-            ),
-        )
-        historical = [
-            _historical_message(item)
-            for item in items[:historical_count]
-        ]
-        current = items[historical_count:]
-        visible = historical + list(current)
-        result: list[Message] = []
-        for index, item in enumerate(visible):
-            if item.role == "user":
-                end = next(
-                    (offset for offset in range(index + 1, len(visible))
-                     if visible[offset].role == "user"),
-                    len(visible),
-                )
-                result.append(_timeline_message(visible[index:end]))
-            result.append(item)
-        return result
-
-
-def _historical_message(item: Message) -> Message:
-    timestamp_utc = item.timestamp_utc
-    if item.role == "tool" or (
-        item.role == "assistant" and item.tool_calls
-    ):
-        timestamp_utc = None
-    return Message(
-        role=item.role,
-        content=item.content,
-        timestamp_utc=timestamp_utc,
-        tool_calls=item.tool_calls,
-        tool_call_id=item.tool_call_id,
-        reasoning=None,
-    )
-
-
-def _timeline_message(items: list[Message]) -> Message:
-    lines = []
-    for item in items:
-        if item.timestamp_utc is None:
-            continue
-        timestamp = item.timestamp_utc.astimezone().isoformat(timespec="seconds")
-        detail = item.role
-        if item.role == "assistant" and item.tool_calls:
-            detail = "assistant step (" + ", ".join(
-                call.name for call in item.tool_calls
-            ) + ")"
-        elif item.role == "tool":
-            detail = f"tool result ({item.tool_call_id or 'unknown'})"
-        lines.append(f"- {timestamp} — {detail}")
-    return Message(
-        role="system",
-        content=(
-            "[Conversation Timeline]\n"
-            "Use these timestamps only to understand chronology and elapsed "
-            "time. Do not reproduce them in responses.\n"
-            + "\n".join(lines)
-        ),
-    )
-
-def _compression_ratios(
-    max_context_tokens: int,
-    trigger_ratio: float | None,
-    target_ratio: float | None,
-) -> tuple[float, float]:
-    """Resolve configured ratios or window-size defaults."""
-    if max_context_tokens <= 32 * 1024:
-        default_trigger, default_target = 0.75, 0.45
-    elif max_context_tokens <= 256 * 1024:
-        default_trigger, default_target = 0.80, 0.50
-    else:
-        # Keep active context bounded instead of scaling linearly with very
-        # large model windows.
-        default_trigger = 200_000 / max_context_tokens
-        default_target = 128_000 / max_context_tokens
-    return (
-        trigger_ratio if trigger_ratio is not None else default_trigger,
-        target_ratio if target_ratio is not None else default_target,
-    )
+        self._context.begin_turn(turn_start)
+        return self._context.archive()
 
 
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:

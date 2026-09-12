@@ -6,7 +6,6 @@ from .agent import (
     ReasoningDeltaEvent,
     AssistantMessageEvent,
     ContextArchivedEvent,
-    ContextWindowExceededError,
     ToolBatchStartedEvent,
     ToolCallEvent,
     ToolCallLimitExceededError,
@@ -17,6 +16,7 @@ from .config import (
     ContextCompressionConfig,
     load_agent_config,
 )
+from .context_manager import ContextManager, ContextWindowExceededError
 from .execution import (
     CommandExecutionResult,
     CommandExecutor,
@@ -62,6 +62,7 @@ __all__ = [
     "ContextCompressionConfig",
     "AgentEvent",
     "AgentRunResult",
+    "ContextManager",
     "AssistantMessageDeltaEvent",
     "AssistantMessageEvent",
     "ContextArchivedEvent",
