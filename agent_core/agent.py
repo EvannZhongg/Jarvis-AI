@@ -133,6 +133,7 @@ class Agent:
             self._provider.max_context_tokens
             - self._config.max_output_tokens
         )
+        self._turn_start: int | None = None
         if self._hard_limit <= 1:
             raise ValueError(
                 "max_context_tokens minus max_output_tokens must be greater "
@@ -163,6 +164,7 @@ class Agent:
         on_event: Callable[[AgentEvent], None] | None = None,
     ) -> AgentRunResult:
         turn_start = len(self._session.items)
+        self._turn_start = turn_start
         model_call_index = 0
         previous_tool_call_key: tuple[str, str] | None = None
         identical_tool_calls = 0
@@ -321,10 +323,7 @@ class Agent:
             )
         return LLMRequest(
             system_prompt=system_prompt,
-            messages=tuple(
-                _format_timed_message(item)
-                for item in self._session.recent_items
-            ),
+            messages=tuple(self._context_messages()),
             tools=self._tools.definitions,
             max_output_tokens=self._config.max_output_tokens,
         )
@@ -342,12 +341,10 @@ class Agent:
             system_prompt = (
                 f"{system_prompt}\n\n[Archived Context Summary]\n{previous}"
             )
+        timeline = _timeline_message(items)
         request = LLMRequest(
             system_prompt=system_prompt,
-            messages=tuple(
-                _format_timed_message(item)
-                for item in items
-            ),
+            messages=tuple([timeline, *items]),
             max_output_tokens=self._config.max_output_tokens,
         )
         response = self._provider.stream(request, lambda _text: None)
@@ -373,6 +370,62 @@ class Agent:
             min(turn_start, len(self._session.items)),
         )
         return self._session.items[archive_start:archive_end]
+
+    def _context_messages(self) -> list[Message]:
+        items = self._session.recent_items
+        if self._turn_start is None:
+            return list(items)
+        historical_count = max(
+            0,
+            min(
+                self._turn_start - self._session.archived_item_count,
+                len(items),
+            ),
+        )
+        historical = items[:historical_count]
+        current = items[historical_count:]
+        visible = [
+            item
+            for item in historical
+            if item.role == "user"
+            or (item.role == "assistant" and not item.tool_calls)
+        ] + list(current)
+        result: list[Message] = []
+        for index, item in enumerate(visible):
+            if item.role == "user":
+                end = next(
+                    (offset for offset in range(index + 1, len(visible))
+                     if visible[offset].role == "user"),
+                    len(visible),
+                )
+                result.append(_timeline_message(visible[index:end]))
+            result.append(item)
+        return result
+
+
+def _timeline_message(items: list[Message]) -> Message:
+    lines = []
+    for item in items:
+        if item.timestamp_utc is None:
+            continue
+        timestamp = item.timestamp_utc.astimezone().isoformat(timespec="seconds")
+        detail = item.role
+        if item.role == "assistant" and item.tool_calls:
+            detail = "assistant step (" + ", ".join(
+                call.name for call in item.tool_calls
+            ) + ")"
+        elif item.role == "tool":
+            detail = f"tool result ({item.tool_call_id or 'unknown'})"
+        lines.append(f"- {timestamp} — {detail}")
+    return Message(
+        role="system",
+        content=(
+            "[Conversation Timeline]\n"
+            "Use these timestamps only to understand chronology and elapsed "
+            "time. Do not reproduce them in responses.\n"
+            + "\n".join(lines)
+        ),
+    )
 
 def _compression_ratios(
     max_context_tokens: int,
@@ -403,23 +456,3 @@ def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:
         separators=(",", ":"),
     )
     return tool_call.name, normalized_arguments
-
-
-def _format_timed_message(message: Message) -> Message:
-    content = message.content
-    if (
-        message.role != "tool"
-        and message.timestamp_utc is not None
-        and content is not None
-    ):
-        local_time = message.timestamp_utc.astimezone().isoformat(
-            timespec="seconds"
-        )
-        content = f"[{local_time}] {content}"
-
-    return Message(
-        role=message.role,
-        content=content,
-        tool_calls=message.tool_calls,
-        tool_call_id=message.tool_call_id,
-    )

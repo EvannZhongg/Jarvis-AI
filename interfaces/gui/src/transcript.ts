@@ -1,6 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { Incoming, ToolCall } from "@nosis/protocol";
-import { stripTimestamp } from "@nosis/protocol";
 import type { SessionItem } from "./api";
 
 /** A transcript item, plus the streaming state the live turn needs. */
@@ -34,7 +33,7 @@ export function applyMessage(
       return { items: appendDelta(items, message.text) };
 
     case "assistant_message":
-      return { items: settleAssistant(items, message.content) };
+      return { items: settleAssistant(items, message.content, message.timestamp_utc) };
 
     case "context_archived":
       return { items, notice: { level: "info", text: `上下文已压缩（checkpoint ${message.checkpoint_number}）。` } };
@@ -121,13 +120,13 @@ function appendDelta(items: TranscriptItem[], text: string): TranscriptItem[] {
 function settleAssistant(
   items: TranscriptItem[],
   content: string,
+  timestamp_utc?: string,
 ): TranscriptItem[] {
-  const text = stripTimestamp(content);
   const last = items[items.length - 1];
   if (last?.role === "assistant" && last.streaming) {
-    return [...items.slice(0, -1), { ...last, content: text, streaming: false }];
+    return [...items.slice(0, -1), { ...last, content, timestamp_utc, streaming: false }];
   }
-  return [...items, { role: "assistant", content: text }];
+  return [...items, { role: "assistant", content, timestamp_utc }];
 }
 
 /** Closes any open assistant text when a turn ends without settling it. */
@@ -150,7 +149,7 @@ export function toMessages(items: TranscriptItem[]): ThreadMessageLike[] {
     if (item.role === "tool") return;
     const content: Exclude<ThreadMessageLike["content"], string> = [
       ...(item.content
-        ? [{ type: "text" as const, text: stripTimestamp(item.content) }]
+        ? [{ type: "text" as const, text: item.content }]
         : []),
       ...(item.tool_calls ?? []).map((call: ToolCall) => ({
         type: "tool-call" as const,
@@ -163,22 +162,14 @@ export function toMessages(items: TranscriptItem[]): ThreadMessageLike[] {
       })),
     ];
 
-    const previous = messages.at(-1);
-    if (item.role === "assistant" && previous?.role === "assistant") {
-      messages[messages.length - 1] = {
-        ...previous,
-        content: [...(previous.content as typeof content), ...content],
-      };
-    } else {
-      messages.push({
-        id: String(index),
-        role: item.role,
-        content,
-        createdAt: item.timestamp_utc
-          ? new Date(item.timestamp_utc)
-          : undefined,
-      });
-    }
+    messages.push({
+      id: String(index),
+      role: item.role,
+      content,
+      createdAt: item.timestamp_utc
+        ? new Date(item.timestamp_utc)
+        : undefined,
+    });
   });
 
   return messages;

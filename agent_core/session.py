@@ -6,7 +6,7 @@ from uuid import uuid4
 from .tools import ToolCall
 
 
-MessageRole = Literal["user", "assistant", "tool"]
+MessageRole = Literal["system", "user", "assistant", "tool"]
 
 
 @dataclass(frozen=True)

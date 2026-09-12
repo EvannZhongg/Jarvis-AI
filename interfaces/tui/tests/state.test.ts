@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MessageDecoder, formatArguments, stripTimestamp } from '@nosis/protocol';
+import { MessageDecoder, formatArguments } from '@nosis/protocol';
 import { initialState, reducer, type State } from '../src/state.js';
 
 const READY = {
@@ -40,11 +40,6 @@ describe('MessageDecoder', () => {
 });
 
 describe('helpers', () => {
-  it('strips the runtime timestamp prefix', () => {
-    expect(stripTimestamp('[2026-09-09T08:00:00+08:00] hello')).toBe('hello');
-    expect(stripTimestamp('hello')).toBe('hello');
-  });
-
   it('formats tool arguments compactly', () => {
     expect(formatArguments({ command: 'ls -la' })).toBe('command=ls -la');
     expect(formatArguments({})).toBe('');

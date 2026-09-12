@@ -111,14 +111,6 @@ export class MessageDecoder {
   }
 }
 
-// The runtime stamps outgoing messages with a local timestamp for the
-// model; it is noise in the transcript.
-const TIMESTAMP_PREFIX = /^\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s*/;
-
-export function stripTimestamp(content: string): string {
-  return content.replace(TIMESTAMP_PREFIX, '');
-}
-
 export function formatArguments(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value !== 'object') return String(value);

@@ -1,5 +1,4 @@
 import type { Incoming, ProtocolError, Usage } from '@nosis/protocol';
-import { stripTimestamp } from '@nosis/protocol';
 
 export type Status =
   | 'starting'
@@ -12,7 +11,7 @@ export type Status =
 
 export type Entry =
   | { kind: 'user'; id: string; text: string }
-  | { kind: 'assistant'; id: string; text: string; settled: boolean }
+  | { kind: 'assistant'; id: string; text: string; settled: boolean; timestamp_utc?: string }
   | {
       kind: 'tool';
       id: string;
@@ -72,13 +71,12 @@ function appendDelta(entries: Entry[], text: string): Entry[] {
   return [...entries, { kind: 'assistant', id: nextId('assistant'), text, settled: false }];
 }
 
-function settleAssistant(entries: Entry[], content: string): Entry[] {
-  const text = stripTimestamp(content);
+function settleAssistant(entries: Entry[], content: string, timestamp_utc?: string): Entry[] {
   const last = entries[entries.length - 1];
   if (last && last.kind === 'assistant' && !last.settled) {
-    return [...entries.slice(0, -1), { ...last, text, settled: true }];
+    return [...entries.slice(0, -1), { ...last, text: content, timestamp_utc, settled: true }];
   }
-  return [...entries, { kind: 'assistant', id: nextId('assistant'), text, settled: true }];
+  return [...entries, { kind: 'assistant', id: nextId('assistant'), text: content, timestamp_utc, settled: true }];
 }
 
 function resolveTool(
@@ -172,7 +170,7 @@ function applyMessage(state: State, message: Incoming): State {
       };
 
     case 'assistant_message':
-      return { ...state, entries: settleAssistant(state.entries, message.content) };
+      return { ...state, entries: settleAssistant(state.entries, message.content, message.timestamp_utc) };
 
     case 'tool_batch_started':
       return { ...state, status: state.status === 'cancelling' ? state.status : 'running' };

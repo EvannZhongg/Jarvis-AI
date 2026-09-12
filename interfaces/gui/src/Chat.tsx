@@ -29,7 +29,13 @@ function ToolCard({ toolName, args, result }: ToolCallMessagePartProps) {
 }
 
 function UserMessage() {
-  return <MessagePrimitive.Root className="user-message"><MessagePrimitive.Parts /></MessagePrimitive.Root>;
+  return <MessagePrimitive.Root className="user-message"><MessagePrimitive.Parts /><MessageTimestamp /></MessagePrimitive.Root>;
+}
+
+function MessageTimestamp() {
+  const createdAt = useAuiState((state) => state.message.createdAt);
+  if (!createdAt) return null;
+  return <time className="message-timestamp" dateTime={createdAt.toISOString()}>{createdAt.toLocaleString()}</time>;
 }
 
 function MarkdownText() {
@@ -39,7 +45,7 @@ function MarkdownText() {
 function AssistantMessage() {
   return <MessagePrimitive.Root className="assistant-message">
     <div className="assistant-label"><span className="assistant-avatar"><img src="/nosis-avatar-128.png" alt="" /></span>Nosis</div>
-    <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCard } }} /></div>
+    <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCard } }} /><MessageTimestamp /></div>
   </MessagePrimitive.Root>;
 }
 

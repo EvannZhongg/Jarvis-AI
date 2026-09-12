@@ -38,20 +38,25 @@ describe("applyMessage", () => {
     ]);
   });
 
-  it("settles the streamed item and strips the runtime timestamp", () => {
+  it("settles the streamed item with its runtime timestamp", () => {
     const { items } = fold([
       { type: "assistant_delta", turn_id: "t1", text: "hi", model_call_index: 1 },
       {
         type: "assistant_message",
         turn_id: "t1",
-        content: "[2026-09-09T08:00:00+08:00] hi there",
+        content: "hi there",
         timestamp_utc: "2026-09-09T00:00:00.000000Z",
         model_call_index: 1,
       },
     ]);
 
     expect(items).toEqual([
-      { role: "assistant", content: "hi there", streaming: false },
+      {
+        role: "assistant",
+        content: "hi there",
+        timestamp_utc: "2026-09-09T00:00:00.000000Z",
+        streaming: false,
+      },
     ]);
   });
 
@@ -190,7 +195,7 @@ describe("toMessages", () => {
     }[];
   }
 
-  it("merges consecutive assistant items into one message", () => {
+  it("keeps assistant timestamps attached to each transcript item", () => {
     const messages = toMessages([
       { role: "user", content: "run it" },
       { role: "assistant", content: "Working on it.", tool_calls: [TOOL_CALL] },
@@ -198,11 +203,10 @@ describe("toMessages", () => {
       { role: "assistant", content: "Done." },
     ]);
 
-    expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(3);
     expect(messages[0].role).toBe("user");
     expect(messages[1].role).toBe("assistant");
-    // Text, the tool call, and the follow-up text share one message.
-    expect(messages[1].content).toHaveLength(3);
+    expect(messages[2].role).toBe("assistant");
   });
 
   it("attaches the stored result to its tool call", () => {
@@ -220,12 +224,17 @@ describe("toMessages", () => {
     expect(part.isError).toBe(true);
   });
 
-  it("strips the runtime timestamp from stored messages", () => {
+  it("keeps stored message text and timestamp separate", () => {
     const messages = toMessages([
-      { role: "user", content: "[2026-09-09T08:00:00+08:00] hello" },
+      {
+        role: "user",
+        content: "hello",
+        timestamp_utc: "2026-09-09T00:00:00.000000Z",
+      },
     ]);
 
     expect(messages[0].content).toEqual([{ type: "text", text: "hello" }]);
+    expect(messages[0].createdAt).toEqual(new Date("2026-09-09T00:00:00.000000Z"));
   });
 
   it("skips a tool item whose output was never stored", () => {

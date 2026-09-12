@@ -20,6 +20,7 @@ function EntryView({ entry }: { entry: Entry }): React.ReactElement {
     return (
       <Box marginTop={1}>
         <Text>{entry.text}</Text>
+        {entry.timestamp_utc ? <Text dimColor>  {new Date(entry.timestamp_utc).toLocaleString()}</Text> : null}
       </Box>
     );
   }

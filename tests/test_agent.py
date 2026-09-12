@@ -116,14 +116,12 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(result.response_timestamp_utc, RESPONSE_TIME)
         self.assertEqual(result.request, provider.requests[0])
         request_messages = provider.requests[0].messages
-        self.assertEqual(
-            provider.requests[0].system_prompt,
-            "You are helpful.",
-        )
+        self.assertNotIn("[Conversation Timeline]", provider.requests[0].system_prompt)
         self.assertEqual(provider.requests[0].max_output_tokens, 100)
-        self.assertEqual(request_messages[0].role, "user")
-        self.assertTrue(request_messages[0].content.startswith("["))
-        self.assertTrue(request_messages[0].content.endswith("] hello"))
+        self.assertEqual(request_messages[0].role, "system")
+        self.assertIn("[Conversation Timeline]", request_messages[0].content)
+        self.assertEqual(request_messages[1].role, "user")
+        self.assertEqual(request_messages[1].content, "hello")
         self.assertEqual(
             session.items,
             [
@@ -196,18 +194,24 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(result.response.content, "second answer")
         self.assertEqual(result.request, provider.requests[1])
-        self.assertEqual(
-            provider.requests[1].system_prompt,
-            "You are helpful.",
-        )
+        self.assertNotIn("[Conversation Timeline]", provider.requests[1].system_prompt)
         history = provider.requests[1].messages
         self.assertEqual(
             [message.role for message in history],
-            ["user", "assistant", "user"],
+            ["system", "user", "assistant", "system", "user"],
         )
-        self.assertTrue(history[0].content.endswith("] first question"))
-        self.assertTrue(history[1].content.endswith("] first answer"))
-        self.assertTrue(history[2].content.endswith("] second question"))
+        self.assertEqual(
+            [message.content for message in history],
+            [
+                history[0].content,
+                "first question",
+                "first answer",
+                history[3].content,
+                "second question",
+            ],
+        )
+        self.assertIn("[Conversation Timeline]", history[0].content)
+        self.assertIn("[Conversation Timeline]", history[3].content)
         self.assertEqual(
             session.items,
             [
@@ -286,22 +290,20 @@ class AgentTest(unittest.TestCase):
         second_request_messages = provider.requests[1].messages
         self.assertEqual(
             [message.role for message in second_request_messages],
-            ["user", "assistant", "tool"],
+            ["system", "user", "assistant", "tool"],
         )
         self.assertEqual(
-            second_request_messages[1],
+            second_request_messages[2],
             Message(
                 role="assistant",
-                content=(
-                    "[2026-09-09T16:00:10+08:00] "
-                    "I'll use the echo tool."
-                ),
+                content="I'll use the echo tool.",
+                timestamp_utc=TOOL_CALL_TIME,
                 tool_calls=(tool_call,),
             ),
         )
-        self.assertEqual(second_request_messages[2].tool_call_id, "call-1")
+        self.assertEqual(second_request_messages[3].tool_call_id, "call-1")
         self.assertEqual(
-            json.loads(second_request_messages[2].content),
+            json.loads(second_request_messages[3].content),
             {
                 "ok": True,
                 "output": {"text": "hello"},
@@ -323,7 +325,7 @@ class AgentTest(unittest.TestCase):
                 ),
                 Message(
                     role="tool",
-                    content=second_request_messages[2].content,
+                    content=second_request_messages[3].content,
                     timestamp_utc=TOOL_RESULT_TIME,
                     tool_call_id="call-1",
                 ),
