@@ -6,6 +6,7 @@ import {
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { ArrowUp, Check, ChevronDown, ChevronRight, LoaderCircle, ShieldCheck, Square, Terminal, X } from "lucide-react";
+import remarkGfm from "remark-gfm";
 import { get, sessionUrl, type ModelOption, type Session } from "./api";
 import { SessionSocket } from "./session";
 import { applyMessage, toMessages, type Notice, type TranscriptItem } from "./transcript";
@@ -18,6 +19,8 @@ type Approval = {
   server?: string;
   toolName?: string;
 };
+
+const MARKDOWN_PLUGINS = [remarkGfm];
 
 function ToolCard({ toolName, args, result }: ToolCallMessagePartProps) {
   const running = useAuiState((state) => state.thread.isRunning);
@@ -46,7 +49,7 @@ function MessageTimestamp() {
 }
 
 function MarkdownText() {
-  return <MarkdownTextPrimitive />;
+  return <MarkdownTextPrimitive remarkPlugins={MARKDOWN_PLUGINS} />;
 }
 
 /** Model reasoning, shown the way the TUI shows it: dim and italic. */
