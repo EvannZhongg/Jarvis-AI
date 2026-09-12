@@ -6,6 +6,7 @@ from typing import Callable, Iterable, TypeAlias
 from .config import AgentConfig
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
+from .prompts import load_consolidator_prompt
 from .session import Message, Session
 from .tool_result import ToolResultNormalizer
 from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
@@ -122,6 +123,15 @@ class Agent:
                 "max_output_tokens must be less than the provider's "
                 "max_context_tokens"
             )
+        configured_budget = (
+            self._provider.max_context_tokens
+            - self._config.max_output_tokens
+            - 1024
+        )
+        # A window smaller than the safety margin cannot be compressed; it
+        # retains the regular provider hard-limit check below.
+        self._compression_enabled = configured_budget > 0
+        self._context_budget = configured_budget
 
     def run(
         self,
@@ -141,21 +151,21 @@ class Agent:
         )
 
         while True:
-            request = LLMRequest(
-                system_prompt=self._system_prompt,
-                messages=tuple(
-                    _format_timed_message(item)
-                    for item in self._session.items
-                ),
-                tools=self._tools.definitions,
-                max_output_tokens=self._config.max_output_tokens,
-            )
+            request = self._build_request()
             input_tokens = self._provider.count_input_tokens(request)
-            if (
-                input_tokens
-                > self._provider.max_context_tokens
-                - self._config.max_output_tokens
+            if self._compression_enabled and (
+                input_tokens >= self._context_budget
+                and self._archivable_items()
             ):
+                self._archive_context()
+                continue
+            hard_limit = (
+                self._context_budget
+                if self._compression_enabled
+                else self._provider.max_context_tokens
+                - self._config.max_output_tokens
+            )
+            if input_tokens > hard_limit:
                 raise ContextWindowExceededError(
                     input_tokens=input_tokens,
                     max_context_tokens=self._provider.max_context_tokens,
@@ -281,6 +291,56 @@ class Agent:
                 request_timestamp_utc=request_timestamp_utc,
                 response_timestamp_utc=response_timestamp_utc,
             )
+
+    def _build_request(self) -> LLMRequest:
+        system_prompt = self._system_prompt
+        if self._session.archived_summary is not None:
+            system_prompt = (
+                f"{system_prompt}\n\n[Archived Context Summary]\n"
+                f"{self._session.archived_summary}"
+            )
+        return LLMRequest(
+            system_prompt=system_prompt,
+            messages=tuple(
+                _format_timed_message(item)
+                for item in self._session.recent_items
+            ),
+            tools=self._tools.definitions,
+            max_output_tokens=self._config.max_output_tokens,
+        )
+
+    def _archive_context(self) -> None:
+        """Compress the unarchived transcript into the session checkpoint."""
+        previous = self._session.archived_summary
+        items = self._archivable_items()
+        system_prompt = load_consolidator_prompt()
+        if previous is not None:
+            system_prompt = (
+                f"{system_prompt}\n\n[Archived Context Summary]\n{previous}"
+            )
+        request = LLMRequest(
+            system_prompt=system_prompt,
+            messages=tuple(
+                _format_timed_message(item)
+                for item in items
+            ),
+            max_output_tokens=self._config.max_output_tokens,
+        )
+        response = self._provider.stream(request, lambda _text: None)
+        summary = response.content.strip() if response.content else ""
+        if response.tool_calls or not summary:
+            raise ValueError("context consolidator must return text content")
+        self._session.set_archived_summary(
+            summary,
+            self._session.archived_item_count + len(items),
+        )
+
+    def _archivable_items(self) -> list[Message]:
+        recent = self._session.recent_items
+        # Keep the newest user turn explicit; it is the active question.
+        if len(recent) > 1 and recent[-1].role == "user":
+            return recent[:-1]
+        return recent
 
 
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:

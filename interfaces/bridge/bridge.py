@@ -171,11 +171,18 @@ class Bridge:
             )
             return
 
+        context_fields = {}
+        if self._session.archived_summary is not None:
+            context_fields = {
+                "archived_summary": self._session.archived_summary,
+                "archived_item_count": self._session.archived_item_count,
+            }
         self._store.append_turn(
             self._session.session_id,
             result.request,
             result.response,
             result.items,
+            **context_fields,
         )
         self.emit(
             "turn_completed",

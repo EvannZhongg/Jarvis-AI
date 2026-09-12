@@ -38,6 +38,8 @@ class JsonlSessionStore:
             return Session(session_id=session_id)
 
         items = []
+        archived_summary = None
+        archived_item_count = 0
         with path.open(encoding="utf-8") as file:
             for line in file:
                 record = json.loads(line)
@@ -45,8 +47,21 @@ class JsonlSessionStore:
                     _message_from_dict(item)
                     for item in record["items"]
                 )
+                context = record.get("context")
+                if isinstance(context, dict):
+                    value = context.get("archived_summary")
+                    if isinstance(value, str):
+                        archived_summary = value
+                    count = context.get("archived_item_count")
+                    if isinstance(count, int) and not isinstance(count, bool):
+                        archived_item_count = count
 
-        return Session(session_id=session_id, items=items)
+        return Session(
+            session_id=session_id,
+            items=items,
+            archived_summary=archived_summary,
+            archived_item_count=min(max(archived_item_count, 0), len(items)),
+        )
 
     def append_turn(
         self,
@@ -54,6 +69,8 @@ class JsonlSessionStore:
         request: LLMRequest,
         response: LLMResponse,
         items: tuple[Message, ...],
+        archived_summary: str | None = None,
+        archived_item_count: int | None = None,
     ) -> None:
         record = {
             "session_id": session_id,
@@ -100,6 +117,11 @@ class JsonlSessionStore:
                 }
                 for tool in request.tools
             ]
+        if archived_summary is not None or archived_item_count is not None:
+            record["context"] = {
+                "archived_summary": archived_summary,
+                "archived_item_count": archived_item_count or 0,
+            }
         path = self._session_path(session_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as file:

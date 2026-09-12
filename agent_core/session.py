@@ -22,6 +22,27 @@ class Message:
 class Session:
     session_id: str = field(default_factory=lambda: str(uuid4()))
     items: list[Message] = field(default_factory=list)
+    # Number of transcript items represented by ``archived_summary``.
+    # Keeping the complete transcript here lets UIs render history while the
+    # agent sends only the unarchived tail to the model.
+    archived_summary: str | None = None
+    archived_item_count: int = 0
+
+    @property
+    def recent_items(self) -> list[Message]:
+        return self.items[self.archived_item_count :]
+
+    def set_archived_summary(
+        self,
+        summary: str,
+        item_count: int | None = None,
+    ) -> None:
+        self.archived_summary = summary
+        self.archived_item_count = (
+            len(self.items)
+            if item_count is None
+            else max(0, min(item_count, len(self.items)))
+        )
 
     def add_item(
         self,
