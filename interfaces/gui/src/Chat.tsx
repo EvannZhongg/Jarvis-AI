@@ -131,6 +131,13 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
       sessionId: session.session_id,
       provider: model,
       onMessage: (message) => {
+        if (message.type === "ready") {
+          if (noticeTimeoutRef.current) {
+            clearTimeout(noticeTimeoutRef.current);
+            noticeTimeoutRef.current = null;
+          }
+          setNotice(null);
+        }
         const applied = applyMessage(itemsRef.current, message);
         showItems(applied.items);
         if (applied.notice) showNotice(applied.notice, message.type === "mcp_server_status");
