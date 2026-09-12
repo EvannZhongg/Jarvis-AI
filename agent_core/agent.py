@@ -133,6 +133,11 @@ class Agent:
             self._provider.max_context_tokens
             - self._config.max_output_tokens
         )
+        if self._hard_limit <= 1:
+            raise ValueError(
+                "max_context_tokens minus max_output_tokens must be greater "
+                "than 1"
+            )
         compression = self._config.context
         self._compression_enabled = compression.enabled
         trigger_ratio, target_ratio = _compression_ratios(
