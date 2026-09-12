@@ -11,7 +11,13 @@ import { SessionSocket } from "./session";
 import { applyMessage, toMessages, type Notice, type TranscriptItem } from "./transcript";
 import type { Usage } from "@nosis/protocol";
 
-type Approval = { requestId: string; command: string };
+type Approval = {
+  requestId: string;
+  command: string;
+  kind?: 'shell' | 'mcp';
+  server?: string;
+  toolName?: string;
+};
 
 function ToolCard({ toolName, args, result }: ToolCallMessagePartProps) {
   const running = useAuiState((state) => state.thread.isRunning);
@@ -166,7 +172,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
         <div className="messages"><ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} /></div>
       </ThreadPrimitive.Viewport>
       <div className="composer-area">
-        {approval && <div className="approval-card" role="region" aria-label="Shell 执行确认"><div className="approval-title"><ShieldCheck size={17} /> 允许执行这条命令？</div><pre>{approval.command}</pre><div className="approval-actions"><button onClick={() => respond(false)}>拒绝</button><button className="approve-button" onClick={() => respond(true)}>允许执行</button></div></div>}
+        {approval && <div className="approval-card" role="region" aria-label="工具执行确认"><div className="approval-title"><ShieldCheck size={17} /> 允许执行此工具调用？</div><pre>{approval.command}</pre><div className="approval-actions"><button onClick={() => respond(false)}>拒绝</button><button className="approve-button" onClick={() => respond(true)}>允许执行</button></div></div>}
         {notice && <div className={notice.level === "error" ? "error-banner" : "notice-banner"} role="alert">{notice.text}</div>}
         {running && <div className="activity" role="status"><LoaderCircle size={13} className="spin" />{approval ? "等待你的确认" : "Nosis 正在处理…"}
           {!approval && <button className="stop-button" aria-label="停止执行" onClick={() => socketRef.current?.send({ type: "cancel" })}><Square size={11} /> 停止</button>}

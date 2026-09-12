@@ -17,8 +17,8 @@ from .builtin import (
     WebSearchTool,
 )
 from .config import ToolConfig, load_tool_config
-from .factory import create_tools
-from .policy import ShellApprovalPolicy
+from .factory import create_builtin_tools, create_tools
+from .policy import CompositeToolPolicy, McpApprovalPolicy, ShellApprovalPolicy
 
 __all__ = [
     "EditFileTool",
@@ -27,6 +27,8 @@ __all__ = [
     "ReadFileTool",
     "SearchFilesTool",
     "ShellApprovalPolicy",
+    "CompositeToolPolicy",
+    "McpApprovalPolicy",
     "ShellTool",
     "Tool",
     "ToolCall",
@@ -38,5 +40,6 @@ __all__ = [
     "ToolResult",
     "WebSearchTool",
     "create_tools",
+    "create_builtin_tools",
     "load_tool_config",
 ]

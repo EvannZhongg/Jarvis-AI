@@ -37,6 +37,8 @@ from .tools import (
     ReadFileTool,
     SearchFilesTool,
     ShellApprovalPolicy,
+    CompositeToolPolicy,
+    McpApprovalPolicy,
     ShellTool,
     Tool,
     ToolCall,
@@ -47,9 +49,11 @@ from .tools import (
     ToolRegistry,
     ToolResult,
     WebSearchTool,
+    create_builtin_tools,
     create_tools,
     load_tool_config,
 )
+from .mcp import McpConfig, McpServerConfig, McpTool, load_mcp_config
 from .workspace import Workspace
 
 __all__ = [
@@ -77,6 +81,8 @@ __all__ = [
     "ReadFileTool",
     "SearchFilesTool",
     "ShellApprovalPolicy",
+    "CompositeToolPolicy",
+    "McpApprovalPolicy",
     "Session",
     "ShellTool",
     "SubprocessCommandExecutor",
@@ -97,6 +103,11 @@ __all__ = [
     "WebSearchTool",
     "Workspace",
     "create_tools",
+    "create_builtin_tools",
+    "McpConfig",
+    "McpServerConfig",
+    "McpTool",
+    "load_mcp_config",
     "load_agent_config",
     "load_tool_config",
 ]

@@ -17,14 +17,17 @@ from agent_core import (
     Agent,
     JsonlSessionStore,
     Session,
+    CompositeToolPolicy,
+    McpApprovalPolicy,
     ShellApprovalPolicy,
     SubprocessCommandExecutor,
     Workspace,
-    create_tools,
+    create_builtin_tools,
     load_agent_config,
 )
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
+from agent_core.mcp.manager import McpClientManager
 
 from .config import load_config
 from .protocol import decode, encode, event_to_message, usage_to_dict
@@ -44,6 +47,7 @@ class Bridge:
         self._agent: Agent | None = None
         self._session: Session | None = None
         self._store: JsonlSessionStore | None = None
+        self._mcp: McpClientManager | None = None
 
     def emit(self, type: str, **fields: object) -> None:
         self._stdout.write(encode({"type": type, **fields}) + "\n")
@@ -68,13 +72,23 @@ class Bridge:
             if stripped:
                 return decode(stripped)
 
-    def request_permission(self, command: str) -> bool:
+    def request_permission(
+        self,
+        command: str,
+        *,
+        kind: str = "shell",
+        server: str | None = None,
+        tool_name: str | None = None,
+    ) -> bool:
         request_id = f"{self._turn_id}:{next(self._approval_ids)}"
         self.emit(
             "approval_request",
             turn_id=self._turn_id,
             request_id=request_id,
             command=command,
+            kind=kind,
+            server=server,
+            tool_name=tool_name,
         )
         while True:
             # Read fresh input only: replaying the deferred queue here
@@ -89,6 +103,16 @@ class Bridge:
             ):
                 return bool(message.get("approved"))
             self._deferred.append(message)
+
+    def request_mcp_permission(self, call) -> bool:
+        parts = call.name.split("__", 2)
+        server = parts[1] if len(parts) == 3 else None
+        return self.request_permission(
+            f"{call.name}({call.arguments})",
+            kind="mcp",
+            server=server,
+            tool_name=call.name,
+        )
 
     def start(self, message: dict[str, object]) -> None:
         config_path = Path(str(message["provider_config_path"]))
@@ -110,6 +134,23 @@ class Bridge:
             self._store.load(str(session_id)) if resumed else Session()
         )
 
+        builtin_tools = create_builtin_tools(
+            agent_config.tools,
+            workspace,
+            SubprocessCommandExecutor(workspace.path),
+            shell_timeout_seconds=agent_config.shell_timeout_seconds,
+        )
+        self._mcp = McpClientManager(
+            agent_config.mcp,
+            workspace.path,
+            on_status=lambda status: self.emit(
+                "mcp_server_status",
+                server=status.server,
+                status=status.status,
+                tool_count=status.tool_count,
+            ),
+        )
+        mcp_tools = self._mcp.start()
         self._agent = Agent(
             provider=LiteLLMProvider(
                 model=config.model,
@@ -121,13 +162,14 @@ class Bridge:
             system_prompt=load_system_prompt(workspace),
             config=agent_config,
             workspace=workspace,
-            tools=create_tools(
-                agent_config.tools,
-                workspace,
-                SubprocessCommandExecutor(workspace.path),
-                shell_timeout_seconds=agent_config.shell_timeout_seconds,
+            tools=(*builtin_tools, *mcp_tools),
+            tool_policy=CompositeToolPolicy(
+                ShellApprovalPolicy(self.request_permission),
+                McpApprovalPolicy(
+                    self.request_mcp_permission,
+                    self._mcp.approval_servers,
+                ),
             ),
-            tool_policy=ShellApprovalPolicy(self.request_permission),
         )
 
         self.emit(
@@ -191,21 +233,25 @@ class Bridge:
         )
 
     def serve(self) -> None:
-        while True:
-            try:
-                message = self.read_message()
-            except (json.JSONDecodeError, ValueError) as error:
-                self.emit(
-                    "fatal",
-                    error={"type": "ProtocolError", "message": str(error)},
-                )
-                raise SystemExit(1)
-            except KeyboardInterrupt:
-                continue  # Interrupted while idle: nothing to cancel.
+        try:
+            while True:
+                try:
+                    message = self.read_message()
+                except (json.JSONDecodeError, ValueError) as error:
+                    self.emit(
+                        "fatal",
+                        error={"type": "ProtocolError", "message": str(error)},
+                    )
+                    raise SystemExit(1)
+                except KeyboardInterrupt:
+                    continue  # Interrupted while idle: nothing to cancel.
 
-            if message is None or message["type"] == "shutdown":
-                return
-            if message["type"] == "start":
-                self.start(message)
-            elif message["type"] == "user_turn":
-                self.run_turn(message)
+                if message is None or message["type"] == "shutdown":
+                    return
+                if message["type"] == "start":
+                    self.start(message)
+                elif message["type"] == "user_turn":
+                    self.run_turn(message)
+        finally:
+            if self._mcp is not None:
+                self._mcp.close()

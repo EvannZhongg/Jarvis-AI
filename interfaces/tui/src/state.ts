@@ -33,7 +33,14 @@ export type State = {
   workspace: string;
   model: string;
   entries: Entry[];
-  approval: { requestId: string; command: string; choice: ApprovalChoice } | null;
+  approval: {
+    requestId: string;
+    command: string;
+    kind?: 'shell' | 'mcp';
+    server?: string;
+    toolName?: string;
+    choice: ApprovalChoice;
+  } | null;
   turnId: string | null;
   usage: Usage | null;
 };
@@ -189,6 +196,20 @@ function reduceAction(state: State, action: Action): State {
 
 function applyMessage(state: State, message: Incoming): State {
   switch (message.type) {
+    case 'mcp_server_status':
+      return {
+        ...state,
+        entries: [
+          ...state.entries,
+          {
+            kind: 'notice',
+            id: nextId('notice'),
+            level: message.status === 'ready' || message.status === 'closed' ? 'info' : 'error',
+            text: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? '' : ` (${message.tool_count} tools)`}`,
+          },
+        ],
+      };
+
     case 'ready':
       return {
         ...state,
@@ -269,6 +290,9 @@ function applyMessage(state: State, message: Incoming): State {
         approval: {
           requestId: message.request_id,
           command: message.command,
+          kind: message.kind,
+          server: message.server,
+          toolName: message.tool_name,
           choice: 'allow',
         },
       };

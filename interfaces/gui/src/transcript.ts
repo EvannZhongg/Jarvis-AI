@@ -11,7 +11,13 @@ export type Notice = { level: "info" | "error"; text: string };
 export type Applied = {
   items: TranscriptItem[];
   notice?: Notice;
-  approval?: { requestId: string; command: string } | null;
+  approval?: {
+    requestId: string;
+    command: string;
+    kind?: 'shell' | 'mcp';
+    server?: string;
+    toolName?: string;
+  } | null;
   /** Tokens the finished turn used, or null when the model reported none. */
   usage?: Usage | null;
   /** Set once the turn ended, so the caller can reload the session. */
@@ -31,6 +37,15 @@ export function applyMessage(
   message: Incoming,
 ): Applied {
   switch (message.type) {
+    case "mcp_server_status":
+      return {
+        items,
+        notice: {
+          level: message.status === "ready" || message.status === "closed" ? "info" : "error",
+          text: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? "" : ` (${message.tool_count} tools)`}`,
+        },
+      };
+
     case "assistant_delta":
       return { items: appendDelta(items, message.text) };
     case "reasoning_delta":
@@ -74,6 +89,9 @@ export function applyMessage(
         approval: {
           requestId: message.request_id,
           command: message.command,
+          kind: message.kind,
+          server: message.server,
+          toolName: message.tool_name,
         },
       };
 

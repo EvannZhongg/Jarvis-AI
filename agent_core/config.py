@@ -7,6 +7,7 @@ from .execution import (
     MAX_COMMAND_TIMEOUT_SECONDS,
 )
 from .tools.config import ToolConfig, load_tool_config
+from .mcp.config import McpConfig, load_mcp_config
 
 
 DEFAULT_SHELL_TIMEOUT_SECONDS = DEFAULT_COMMAND_TIMEOUT_SECONDS
@@ -29,6 +30,7 @@ class AgentConfig:
     context: ContextCompressionConfig = field(
         default_factory=ContextCompressionConfig
     )
+    mcp: McpConfig = field(default_factory=McpConfig)
 
 
 def load_agent_config(path: Path) -> AgentConfig:
@@ -59,6 +61,7 @@ def load_agent_config(path: Path) -> AgentConfig:
         )
     tools = load_tool_config(data.get("tools"))
     context = _context_config(data.get("context"))
+    mcp = load_mcp_config(data.get("mcp"))
 
     return AgentConfig(
         max_same_tool_calls=max_same_tool_calls,
@@ -66,6 +69,7 @@ def load_agent_config(path: Path) -> AgentConfig:
         tools=tools,
         shell_timeout_seconds=shell_timeout_seconds,
         context=context,
+        mcp=mcp,
     )
 
 

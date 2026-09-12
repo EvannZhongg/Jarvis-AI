@@ -56,9 +56,6 @@ nosis
 | `Ctrl+C` | 取消当前轮次；空输入时退出 |
 | `Ctrl+D` | 退出 |
 
-shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝。界面底部显示
-当前 Workspace、模型和 Session ID。
-
 ## 配置
 
 首次运行会在 `~/.nosis/` 下生成 `provider_config.json` 和
@@ -81,6 +78,33 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
   }
 }
 ```
+
+MCP Server 通过同一文件中的 `mcp` 字段配置。支持 `stdio` 和
+`streamable_http`，启用后工具会以 `mcp__服务器名__工具名` 的命名空间注册；
+`tool_allowlist` 可限制暴露给模型的工具，`approval` 为 `prompt` 时每次调用会
+请求人工确认。stdio 示例：
+
+```json
+{
+  "mcp": {
+    "enabled": true,
+    "servers": {
+      "filesystem": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+        "cwd": ".",
+        "tool_allowlist": ["read_file"],
+        "approval": "prompt"
+      }
+    }
+  }
+}
+```
+
+HTTP Server 使用 `transport: "streamable_http"` 和 `url`，请求头中的
+`${ENV_NAME}` 会从环境变量读取。MCP 配置采用严格校验，传输方式不匹配的字段、
+未知字段或缺失的必填字段都会导致启动失败。
 
 | 字段 | 说明 |
 | --- | --- |

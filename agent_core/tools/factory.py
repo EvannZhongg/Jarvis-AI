@@ -12,7 +12,7 @@ from .builtin import (
 from .config import ToolConfig
 
 
-def create_tools(
+def create_builtin_tools(
     config: ToolConfig,
     workspace: Workspace,
     command_executor: CommandExecutor,
@@ -39,3 +39,6 @@ def create_tools(
         tools.append(WebSearchTool())
 
     return tuple(tools)
+
+
+create_tools = create_builtin_tools

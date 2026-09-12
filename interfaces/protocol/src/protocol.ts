@@ -68,7 +68,16 @@ export type Incoming =
       tool_index: number;
       tool_count: number;
     }
-  | { type: 'approval_request'; turn_id: string; request_id: string; command: string }
+  | {
+      type: 'approval_request';
+      turn_id: string | null;
+      request_id: string;
+      command: string;
+      kind?: 'shell' | 'mcp';
+      server?: string;
+      tool_name?: string;
+    }
+  | { type: 'mcp_server_status'; server: string; status: string; tool_count?: number }
   | { type: 'turn_completed'; turn_id: string; usage: Usage | null }
   | { type: 'turn_cancelled'; turn_id: string; persisted: boolean }
   | { type: 'turn_failed'; turn_id: string; error: ProtocolError }
