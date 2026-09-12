@@ -8,6 +8,7 @@ from pathlib import Path
 from agent_core import (
     AssistantMessageDeltaEvent,
     AssistantMessageEvent,
+    ReasoningDeltaEvent,
     ToolBatchStartedEvent,
     ToolCall,
     ToolCallEvent,
@@ -40,6 +41,20 @@ class ProtocolTest(unittest.TestCase):
                 "type": "assistant_delta",
                 "turn_id": "t1",
                 "text": "hi",
+                "model_call_index": 1,
+            },
+        )
+
+    def test_encodes_reasoning_delta(self) -> None:
+        self.assertEqual(
+            event_to_message(
+                ReasoningDeltaEvent(text="thinking", model_call_index=1),
+                "t1",
+            ),
+            {
+                "type": "reasoning_delta",
+                "turn_id": "t1",
+                "text": "thinking",
                 "model_call_index": 1,
             },
         )

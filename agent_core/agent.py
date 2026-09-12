@@ -1,5 +1,4 @@
 import json
-import inspect
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable, TypeAlias
@@ -218,10 +217,11 @@ class Agent:
                 if on_event is not None:
                     on_event(ReasoningDeltaEvent(text=text, model_call_index=model_call_index))
 
-            if len(inspect.signature(self._provider.stream).parameters) >= 3:
-                response = self._provider.stream(request, on_text_delta, on_reasoning_delta)
-            else:
-                response = self._provider.stream(request, on_text_delta)
+            response = self._provider.stream(
+                request,
+                on_text_delta,
+                on_reasoning_delta,
+            )
 
             if response.tool_calls:
                 next_tool_call_key = previous_tool_call_key
@@ -364,7 +364,7 @@ class Agent:
             messages=tuple([timeline, *historical_items]),
             max_output_tokens=self._config.max_output_tokens,
         )
-        response = self._provider.stream(request, lambda _text: None)
+        response = self._provider.stream(request, lambda _text: None, None)
         summary = response.content.strip() if response.content else ""
         if response.tool_calls or not summary:
             raise ValueError("context consolidator must return text content")
