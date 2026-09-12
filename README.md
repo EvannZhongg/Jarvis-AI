@@ -85,7 +85,8 @@ shell 授权默认停在 `Allow`，按 `Enter` 确认，按 `Esc` 直接拒绝�
 | 字段 | 说明 |
 | --- | --- |
 | `max_same_tool_calls` | 单轮内完全相同的 Tool Call 最多连续执行几次，超过即终止本轮 |
-| `max_output_tokens` | 每次回答预留的输出 token 数；上下文预算为模型上限减去该值再减 1024，达到预算时自动生成 Archived Context Summary |
+| `max_output_tokens` | 每次回答预留的输出 token 数；hard limit 为模型上限减去该值 |
+| `context.compression` | 可选上下文压缩设置：`enabled`、`trigger_ratio`、`target_ratio`；压缩阈值与目标均相对于 hard limit 计算，且 target 必须小于 trigger |
 | `shell_timeout_seconds` | shell 默认超时，默认 60 秒、上限 900 秒；单次调用可用 `timeout_seconds` 指定更短值 |
 | `tools` | 内置 Tool 开关：显式写 `true` 才启用，未写出的 Tool 保持关闭；未知名称或非布尔值会导致启动失败 |
 

@@ -129,15 +129,28 @@ class Agent:
                 "max_output_tokens must be less than the provider's "
                 "max_context_tokens"
             )
-        configured_budget = (
+        self._hard_limit = (
             self._provider.max_context_tokens
             - self._config.max_output_tokens
-            - 1024
         )
-        # A window smaller than the safety margin cannot be compressed; it
-        # retains the regular provider hard-limit check below.
-        self._compression_enabled = configured_budget > 0
-        self._context_budget = configured_budget
+        compression = self._config.context
+        self._compression_enabled = compression.enabled
+        trigger_ratio, target_ratio = _compression_ratios(
+            self._provider.max_context_tokens,
+            compression.trigger_ratio,
+            compression.target_ratio,
+        )
+        self._compression_threshold = max(
+            1, int(self._hard_limit * trigger_ratio)
+        )
+        self._compression_target = max(
+            1, int(self._hard_limit * target_ratio)
+        )
+        if self._compression_enabled and (
+            self._compression_target >= self._compression_threshold
+            or self._compression_threshold >= self._hard_limit
+        ):
+            raise ValueError("compression target must be less than threshold")
 
     def run(
         self,
@@ -160,20 +173,14 @@ class Agent:
             request = self._build_request()
             input_tokens = self._provider.count_input_tokens(request)
             if self._compression_enabled and (
-                input_tokens >= self._context_budget
+                input_tokens >= self._compression_threshold
                 and self._archivable_items(turn_start)
             ):
                 checkpoint_number = self._archive_context(turn_start)
                 if on_event is not None:
                     on_event(ContextArchivedEvent(checkpoint_number))
                 continue
-            hard_limit = (
-                self._context_budget
-                if self._compression_enabled
-                else self._provider.max_context_tokens
-                - self._config.max_output_tokens
-            )
-            if input_tokens > hard_limit:
+            if input_tokens > self._hard_limit:
                 raise ContextWindowExceededError(
                     input_tokens=input_tokens,
                     max_context_tokens=self._provider.max_context_tokens,
@@ -322,6 +329,10 @@ class Agent:
         previous = self._session.archived_summary
         items = self._archivable_items(turn_start)
         system_prompt = load_consolidator_prompt()
+        system_prompt = (
+            f"{system_prompt}\n\nTarget checkpoint size: approximately "
+            f"{self._compression_target} tokens."
+        )
         if previous is not None:
             system_prompt = (
                 f"{system_prompt}\n\n[Archived Context Summary]\n{previous}"
@@ -357,6 +368,26 @@ class Agent:
             min(turn_start, len(self._session.items)),
         )
         return self._session.items[archive_start:archive_end]
+
+def _compression_ratios(
+    max_context_tokens: int,
+    trigger_ratio: float | None,
+    target_ratio: float | None,
+) -> tuple[float, float]:
+    """Resolve configured ratios or window-size defaults."""
+    if max_context_tokens <= 32 * 1024:
+        default_trigger, default_target = 0.75, 0.45
+    elif max_context_tokens <= 256 * 1024:
+        default_trigger, default_target = 0.80, 0.50
+    else:
+        # Keep active context bounded instead of scaling linearly with very
+        # large model windows.
+        default_trigger = 200_000 / max_context_tokens
+        default_target = 128_000 / max_context_tokens
+    return (
+        trigger_ratio if trigger_ratio is not None else default_trigger,
+        target_ratio if target_ratio is not None else default_target,
+    )
 
 
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:

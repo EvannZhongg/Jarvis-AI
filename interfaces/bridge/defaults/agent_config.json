@@ -2,6 +2,13 @@
   "max_same_tool_calls": 5,
   "max_output_tokens": 8192,
   "shell_timeout_seconds": 60,
+  "context": {
+    "compression": {
+      "enabled": true,
+      "trigger_ratio": null,
+      "target_ratio": null
+    }
+  },
   "tools": {
     "read_file": true,
     "edit_file": true,

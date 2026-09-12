@@ -11,7 +11,11 @@ from .agent import (
     ToolCallLimitExceededError,
     ToolResultEvent,
 )
-from .config import AgentConfig, load_agent_config
+from .config import (
+    AgentConfig,
+    ContextCompressionConfig,
+    load_agent_config,
+)
 from .execution import (
     CommandExecutionResult,
     CommandExecutor,
@@ -50,6 +54,7 @@ from .workspace import Workspace
 __all__ = [
     "Agent",
     "AgentConfig",
+    "ContextCompressionConfig",
     "AgentEvent",
     "AgentRunResult",
     "AssistantMessageDeltaEvent",
