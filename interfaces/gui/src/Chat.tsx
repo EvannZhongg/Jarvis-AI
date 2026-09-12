@@ -18,7 +18,7 @@ function ToolCard({ toolName, args, result }: ToolCallMessagePartProps) {
   const output = result as { ok: boolean; output?: unknown; error?: { message: string } } | undefined;
   const detail = args.path ?? args.pattern ?? args.command;
   return <details className="tool-card">
-    <summary><ChevronRight size={14} className="tool-chevron" /><Terminal size={15} /><span className="tool-name">{toolName}</span><span className="tool-detail">{typeof detail === "string" ? detail : ""}</span>
+    <summary><ChevronRight size={14} className="tool-chevron" /><span className="tool-name">{toolName}</span><span className="tool-detail">{typeof detail === "string" ? detail : ""}</span>
       {output ? output.ok ? <Check size={15} className="success" /> : <X size={15} className="failure" /> : running ? <LoaderCircle size={15} className="spin" /> : <span className="tool-status">未完成</span>}
     </summary>
     <div className="tool-body"><div className="tool-caption">参数</div><pre>{JSON.stringify(args, null, 2)}</pre>
