@@ -357,10 +357,11 @@ class Agent:
             system_prompt = (
                 f"{system_prompt}\n\n[Archived Context Summary]\n{previous}"
             )
-        timeline = _timeline_message(items)
+        historical_items = [_historical_message(item) for item in items]
+        timeline = _timeline_message(historical_items)
         request = LLMRequest(
             system_prompt=system_prompt,
-            messages=tuple([timeline, *items]),
+            messages=tuple([timeline, *historical_items]),
             max_output_tokens=self._config.max_output_tokens,
         )
         response = self._provider.stream(request, lambda _text: None)
@@ -398,18 +399,12 @@ class Agent:
                 len(items),
             ),
         )
-        historical = items[:historical_count]
-        current = items[historical_count:]
-        visible = [
-            item
-            for item in historical
-            if item.role == "user"
-            or (item.role == "assistant" and not item.tool_calls)
-        ] + list(current)
-        visible = [
-            Message(item.role, item.content, item.timestamp_utc, item.tool_calls, item.tool_call_id)
-            for item in visible
+        historical = [
+            _historical_message(item)
+            for item in items[:historical_count]
         ]
+        current = items[historical_count:]
+        visible = historical + list(current)
         result: list[Message] = []
         for index, item in enumerate(visible):
             if item.role == "user":
@@ -421,6 +416,22 @@ class Agent:
                 result.append(_timeline_message(visible[index:end]))
             result.append(item)
         return result
+
+
+def _historical_message(item: Message) -> Message:
+    timestamp_utc = item.timestamp_utc
+    if item.role == "tool" or (
+        item.role == "assistant" and item.tool_calls
+    ):
+        timestamp_utc = None
+    return Message(
+        role=item.role,
+        content=item.content,
+        timestamp_utc=timestamp_utc,
+        tool_calls=item.tool_calls,
+        tool_call_id=item.tool_call_id,
+        reasoning=None,
+    )
 
 
 def _timeline_message(items: list[Message]) -> Message:

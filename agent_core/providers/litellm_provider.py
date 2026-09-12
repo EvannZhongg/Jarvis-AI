@@ -164,6 +164,8 @@ def _message_to_dict(message: Message) -> dict[str, object]:
         "role": message.role,
         "content": message.content,
     }
+    if message.reasoning is not None:
+        data["reasoning_content"] = message.reasoning
     if message.tool_calls:
         data["tool_calls"] = [
             {

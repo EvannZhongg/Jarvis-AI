@@ -154,6 +154,7 @@ class LiteLLMProviderTest(unittest.TestCase):
                     Message(
                         role="assistant",
                         content=None,
+                        reasoning="Inspect the file before answering.",
                         tool_calls=(
                             ToolCall(
                                 id="previous-call",
@@ -193,6 +194,7 @@ class LiteLLMProviderTest(unittest.TestCase):
                 {
                     "role": "assistant",
                     "content": None,
+                    "reasoning_content": "Inspect the file before answering.",
                     "tool_calls": [
                         {
                             "id": "previous-call",

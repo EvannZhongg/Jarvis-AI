@@ -257,6 +257,7 @@ class AgentTest(unittest.TestCase):
                 LLMResponse(
                     content="I'll use the echo tool.",
                     tool_calls=(tool_call,),
+                    reasoning="I need to inspect the requested input first.",
                 ),
                 LLMResponse(content="tool completed"),
             ]
@@ -299,9 +300,16 @@ class AgentTest(unittest.TestCase):
                 content="I'll use the echo tool.",
                 timestamp_utc=TOOL_CALL_TIME,
                 tool_calls=(tool_call,),
+                reasoning="I need to inspect the requested input first.",
             ),
         )
         self.assertEqual(second_request_messages[3].tool_call_id, "call-1")
+        self.assertEqual(
+            second_request_messages[2].reasoning,
+            "I need to inspect the requested input first.",
+        )
+        self.assertIn("assistant step (echo)", second_request_messages[0].content)
+        self.assertIn("tool result (call-1)", second_request_messages[0].content)
         self.assertEqual(
             json.loads(second_request_messages[3].content),
             {
@@ -322,6 +330,7 @@ class AgentTest(unittest.TestCase):
                     content="I'll use the echo tool.",
                     timestamp_utc=TOOL_CALL_TIME,
                     tool_calls=(tool_call,),
+                    reasoning="I need to inspect the requested input first.",
                 ),
                 Message(
                     role="tool",
@@ -396,6 +405,134 @@ class AgentTest(unittest.TestCase):
                 model_call_index=2,
             ),
         )
+
+    def test_keeps_historical_tool_chain_without_intermediate_timestamps(
+        self,
+    ) -> None:
+        tool_call = ToolCall(
+            id="call-1",
+            name="echo",
+            arguments={"text": "hello"},
+        )
+        provider = MockProvider(
+            [
+                LLMResponse(content="using echo", tool_calls=(tool_call,)),
+                LLMResponse(content="first answer"),
+                LLMResponse(content="second answer"),
+            ]
+        )
+        session = Session(session_id="session-1")
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
+            now=clock(
+                REQUEST_TIME,
+                TOOL_CALL_TIME,
+                TOOL_RESULT_TIME,
+                RESPONSE_TIME,
+                datetime(2026, 9, 9, 9, 0, tzinfo=timezone.utc),
+                datetime(2026, 9, 9, 9, 1, tzinfo=timezone.utc),
+            ),
+            tools=(EchoTool(),),
+        )
+
+        agent.run("first question")
+        agent.run("second question")
+
+        history = provider.requests[2].messages
+        self.assertEqual(
+            [message.role for message in history],
+            [
+                "system",
+                "user",
+                "assistant",
+                "tool",
+                "assistant",
+                "system",
+                "user",
+            ],
+        )
+        self.assertEqual(history[2].tool_calls, (tool_call,))
+        self.assertEqual(history[3].tool_call_id, "call-1")
+        self.assertEqual(
+            [message.timestamp_utc for message in history[1:5]],
+            [REQUEST_TIME, None, None, RESPONSE_TIME],
+        )
+        self.assertEqual(
+            [message.reasoning for message in history[1:5]],
+            [None, None, None, None],
+        )
+        historical_timeline = history[0].content or ""
+        self.assertIn("user", historical_timeline)
+        self.assertIn("assistant", historical_timeline)
+        self.assertNotIn("assistant step", historical_timeline)
+        self.assertNotIn("tool result", historical_timeline)
+
+    def test_context_archive_keeps_tools_without_intermediate_timestamps(
+        self,
+    ) -> None:
+        tool_call = ToolCall(
+            id="call-1",
+            name="echo",
+            arguments={"text": "hello"},
+        )
+        session = Session(
+            session_id="session-1",
+            items=[
+                Message("user", "question", REQUEST_TIME),
+                Message(
+                    "assistant",
+                    None,
+                    TOOL_CALL_TIME,
+                    tool_calls=(tool_call,),
+                    reasoning="Use the tool to inspect the file.",
+                ),
+                Message(
+                    "tool",
+                    '{"ok": true}',
+                    TOOL_RESULT_TIME,
+                    tool_call_id="call-1",
+                ),
+                Message(
+                    "assistant",
+                    "answer",
+                    RESPONSE_TIME,
+                    reasoning="Summarize the tool result.",
+                ),
+            ],
+        )
+        provider = MockProvider(["checkpoint"])
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
+        )
+
+        agent._archive_context(turn_start=len(session.items))
+
+        archived = provider.requests[0].messages
+        self.assertEqual(
+            [message.role for message in archived],
+            ["system", "user", "assistant", "tool", "assistant"],
+        )
+        self.assertEqual(archived[2].tool_calls, (tool_call,))
+        self.assertEqual(archived[3].tool_call_id, "call-1")
+        self.assertEqual(
+            [message.timestamp_utc for message in archived[1:]],
+            [REQUEST_TIME, None, None, RESPONSE_TIME],
+        )
+        self.assertEqual(
+            [message.reasoning for message in archived[1:]],
+            [None, None, None, None],
+        )
+        timeline = archived[0].content or ""
+        self.assertNotIn("assistant step", timeline)
+        self.assertNotIn("tool result", timeline)
 
     def test_returns_unknown_tool_error_to_model(self) -> None:
         provider = MockProvider(
