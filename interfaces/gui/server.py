@@ -11,6 +11,7 @@ import asyncio
 import json
 import signal
 import sys
+from uuid import uuid4
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -111,8 +112,9 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="Nosis", docs_url=None, redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=[HOST, "localhost"])
-    # One agent at a time: concurrent turns would write the same workspace.
-    session_lock = asyncio.Lock()
+    # Serialize connections for the same session. Different sessions have
+    # independent bridge processes and may run concurrently.
+    session_locks: dict[str, asyncio.Lock] = {}
 
     @app.get("/api/models")
     def list_models() -> dict[str, object]:
@@ -157,45 +159,51 @@ def create_app(
             return
 
         await websocket.accept()
-        # A page reconnects to switch model, so briefly wait out the
-        # previous connection's shutdown before declaring the agent busy.
+        # Read the opening frame before selecting a lock: the session id is
+        # the unit of concurrency. A new session has no id yet, so give this
+        # connection a private key and let the bridge allocate its id.
         try:
-            await asyncio.wait_for(
-                session_lock.acquire(),
-                timeout=HANDOVER_TIMEOUT_SECONDS,
+            opening = await websocket.receive_json()
+            start = _start_message(
+                opening,
+                workspace,
+                provider_config_path,
+                agent_config_path,
+                models,
             )
-        except asyncio.TimeoutError:
+        except WebSocketDisconnect:
+            return
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
             await websocket.send_json(
                 {
                     "type": "fatal",
                     "error": {
-                        "type": "SessionBusy",
-                        "message": "Nosis 正在另一个页面中执行任务。",
+                        "type": "ProtocolError",
+                        "message": str(error),
                     },
                 }
             )
             await websocket.close()
             return
 
+        session_id = start["session_id"]
+        lock_key = session_id if isinstance(session_id, str) and session_id else f"new:{uuid4()}"
+        session_lock = session_locks.setdefault(lock_key, asyncio.Lock())
+        lock_acquired = False
         try:
             try:
-                opening = await websocket.receive_json()
-                start = _start_message(
-                    opening,
-                    workspace,
-                    provider_config_path,
-                    agent_config_path,
-                    models,
+                await asyncio.wait_for(
+                    session_lock.acquire(),
+                    timeout=HANDOVER_TIMEOUT_SECONDS,
                 )
-            except WebSocketDisconnect:
-                return
-            except (TypeError, ValueError, json.JSONDecodeError) as error:
+                lock_acquired = True
+            except asyncio.TimeoutError:
                 await websocket.send_json(
                     {
                         "type": "fatal",
                         "error": {
-                            "type": "ProtocolError",
-                            "message": str(error),
+                            "type": "SessionBusy",
+                            "message": "该会话正在另一个页面中执行任务。",
                         },
                     }
                 )
@@ -209,7 +217,10 @@ def create_app(
             finally:
                 await bridge.close()
         finally:
-            session_lock.release()
+            if lock_acquired:
+                session_lock.release()
+                if not session_lock.locked():
+                    session_locks.pop(lock_key, None)
 
     if STATIC_PATH.is_dir():
         app.mount("/", StaticFiles(directory=STATIC_PATH, html=True), name="gui")

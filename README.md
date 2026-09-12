@@ -129,10 +129,6 @@ EXA_API_KEY=your-api-key
 
 ## GUI
 
-GUI 使用 React + assistant-ui，布局为左侧 Sessions、中间 Chat、右侧 Workspace，
-新建会话、恢复历史、Markdown 回复、工具参数与结果、Shell 授权确认和目录展开都
-可以直接在浏览器中操作。
-
 构建前端并启动（Python 依赖在安装步骤里已经装好）：
 
 ```bash
@@ -152,7 +148,8 @@ GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
 `python -m interfaces.bridge` 子进程），模型配置、Tool 注册、Shell 授权、Session
 落盘和取消行为都一致，两边可以互相恢复同一批 Session。执行中可以点「停止」中断
 当前轮次，等同 TUI 的 `Esc`；被取消的轮次不会写入 Session 文件，已执行的工具
-操作不会撤销。同一时刻只允许一个页面驱动 Agent。
+操作不会撤销。同一个 Session 同一时刻只允许一个页面驱动 Agent；不同 Session
+可以并行执行。
 
 前端开发时先启动 `nosis-gui`，另开终端执行
 `npm run dev --prefix interfaces/gui`，访问 Vite 显示的
