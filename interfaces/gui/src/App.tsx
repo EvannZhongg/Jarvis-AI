@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, MessageSquare, Plus } from "lucide-react";
 import { Chat } from "./Chat";
 import { Workspace } from "./Workspace";
+import type { Usage } from "@nosis/protocol";
 import { get, sessionUrl, type ModelOption, type ModelOptions, type Session, type SessionSummary } from "./api";
 
 export function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [session, setSession] = useState<Session>(() => ({ session_id: crypto.randomUUID(), items: [] }));
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
@@ -23,6 +25,8 @@ export function App() {
   }, []);
 
   useEffect(() => { void refreshSessions(); }, [refreshSessions]);
+  // Usage belongs to the shown conversation, so switching sessions clears it.
+  useEffect(() => { setUsage(null); }, [session.session_id]);
   useEffect(() => {
     get<ModelOptions>("/api/models").then((options) => {
       setModels(options.models);
@@ -66,10 +70,10 @@ export function App() {
       </aside>
 
       <main className="chat-panel">
-        <header className="chat-header"><div className="breadcrumb">Chat <ChevronRight size={14} /><span>{selectedTitle}</span></div><span className="status-label"><span className={`status-dot ${busy ? "working" : ""}`} />{busy ? "Working" : "Ready"}</span></header>
+        <header className="chat-header"><div className="breadcrumb">Chat <ChevronRight size={14} /><span>{selectedTitle}</span></div><span className="status-label"><span className={`status-dot ${busy ? "working" : ""}`} />{busy ? "Working" : "Ready"}{usage?.total_tokens ? ` · ${usage.total_tokens} tokens` : ""}</span></header>
         {error && <div className="error-banner" role="alert">{error}</div>}
         <Chat key={session.session_id} session={session} disabled={loading || !model}
-          models={models} model={model} onModelChange={setModel} onBusyChange={setBusy} onTurnEnd={() => {
+          models={models} model={model} onModelChange={setModel} onBusyChange={setBusy} onUsageChange={setUsage} onTurnEnd={() => {
           void refreshSessions();
           setWorkspaceVersion((value) => value + 1);
         }} />

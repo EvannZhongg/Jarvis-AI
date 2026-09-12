@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AssistantRuntimeProvider, ComposerPrimitive, MessagePrimitive,
   ThreadPrimitive, useAuiState, useExternalStoreRuntime,
-  type AppendMessage, type ToolCallMessagePartProps,
+  type AppendMessage, type ReasoningMessagePartProps, type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import { ArrowUp, Check, ChevronDown, ChevronRight, LoaderCircle, ShieldCheck, Square, Terminal, X } from "lucide-react";
 import { get, sessionUrl, type ModelOption, type Session } from "./api";
 import { SessionSocket } from "./session";
 import { applyMessage, toMessages, type Notice, type TranscriptItem } from "./transcript";
+import type { Usage } from "@nosis/protocol";
 
 type Approval = { requestId: string; command: string };
 
@@ -42,15 +43,21 @@ function MarkdownText() {
   return <MarkdownTextPrimitive />;
 }
 
+/** Model reasoning, shown the way the TUI shows it: dim and italic. */
+function ReasoningText({ text }: ReasoningMessagePartProps) {
+  return <div className="reasoning-text">{text}</div>;
+}
+
 function AssistantMessage() {
   return <MessagePrimitive.Root className="assistant-message">
     <div className="assistant-label"><span className="assistant-avatar"><img src="/nosis-avatar-128.png" alt="" /></span>Nosis</div>
-    <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, tools: { Fallback: ToolCard } }} /><MessageTimestamp /></div>
+    <div className="assistant-content"><MessagePrimitive.Parts components={{ Text: MarkdownText, Reasoning: ReasoningText, tools: { Fallback: ToolCard } }} /><MessageTimestamp /></div>
   </MessagePrimitive.Root>;
 }
 
-export function Chat({ session, disabled, models, model, onModelChange, onBusyChange, onTurnEnd }: {
+export function Chat({ session, disabled, models, model, onModelChange, onBusyChange, onUsageChange, onTurnEnd }: {
   session: Session; disabled: boolean; onBusyChange: (busy: boolean) => void; onTurnEnd: () => void;
+  onUsageChange: (usage: Usage | null) => void;
   models: ModelOption[]; model: string; onModelChange: (model: string) => void;
 }) {
   const [items, setItems] = useState<TranscriptItem[]>(session.items);
@@ -106,6 +113,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
         showItems(applied.items);
         if (applied.notice) setNotice(applied.notice);
         if (applied.approval !== undefined) setApproval(applied.approval);
+        if (applied.usage !== undefined) onUsageChange(applied.usage);
         if (applied.finished) void endTurn();
       },
       onClose: () => {
@@ -133,6 +141,8 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
     setRunning(true);
     onBusyChange(true);
     setNotice(null);
+    // Tokens belong to the turn that is running, not to the previous one.
+    onUsageChange(null);
 
     turnCounter.current += 1;
     const socket = socketRef.current ?? connect();

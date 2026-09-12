@@ -132,6 +132,61 @@ describe("applyMessage", () => {
     expect(completed.finished).toBe(true);
   });
 
+  it("accumulates reasoning deltas and keeps them before the answer", () => {
+    const { items } = fold([
+      { type: "reasoning_delta", turn_id: "t1", text: "weighing ", model_call_index: 1 },
+      { type: "reasoning_delta", turn_id: "t1", text: "the options", model_call_index: 1 },
+      { type: "assistant_delta", turn_id: "t1", text: "Pushing", model_call_index: 1 },
+      {
+        type: "assistant_message",
+        turn_id: "t1",
+        content: "Pushing now.",
+        timestamp_utc: "2026-09-09T00:00:00.000000Z",
+        model_call_index: 1,
+      },
+    ]);
+
+    expect(items).toEqual([
+      {
+        role: "assistant",
+        content: "Pushing now.",
+        reasoning: "weighing the options",
+        timestamp_utc: "2026-09-09T00:00:00.000000Z",
+        streaming: false,
+      },
+    ]);
+
+    const messages = toMessages(items);
+    const parts = messages[0].content as { type: string; text?: string }[];
+    expect(parts).toEqual([
+      { type: "reasoning", text: "weighing the options" },
+      { type: "text", text: "Pushing now." },
+    ]);
+  });
+
+  it("reports the finished turn's token usage", () => {
+    const applied = applyMessage([], {
+      type: "turn_completed",
+      turn_id: "t1",
+      usage: { input_tokens: 900, output_tokens: 100, total_tokens: 1000 },
+    });
+
+    expect(applied.usage).toEqual({
+      input_tokens: 900,
+      output_tokens: 100,
+      total_tokens: 1000,
+    });
+    // Anything else leaves the status area as it was.
+    expect(
+      applyMessage([], {
+        type: "assistant_delta",
+        turn_id: "t1",
+        text: "hi",
+        model_call_index: 1,
+      }).usage,
+    ).toBeUndefined();
+  });
+
   it("settles open text and reports a cancelled turn", () => {
     const { items, notice, finished } = fold([
       { type: "assistant_delta", turn_id: "t1", text: "partial", model_call_index: 1 },
@@ -190,12 +245,26 @@ describe("toMessages", () => {
   function parts(message: { content: unknown }) {
     return message.content as {
       type: string;
+      text?: string;
       isError?: boolean;
       result?: unknown;
     }[];
   }
 
-  it("keeps assistant timestamps attached to each transcript item", () => {
+  it("renders stored reasoning before the answer of the same item", () => {
+    const messages = toMessages([
+      { role: "assistant", content: null, reasoning: "weighing the options", tool_calls: [TOOL_CALL] },
+    ]);
+
+    expect(parts(messages[0]).map((part) => part.type)).toEqual([
+      "reasoning",
+      "tool-call",
+    ]);
+  });
+
+  it("folds a turn's assistant items into one message", () => {
+    // The shape of a stored turn: the model narrates, calls a tool, then
+    // narrates again before its final answer.
     const messages = toMessages([
       { role: "user", content: "run it" },
       { role: "assistant", content: "Working on it.", tool_calls: [TOOL_CALL] },
@@ -203,10 +272,42 @@ describe("toMessages", () => {
       { role: "assistant", content: "Done." },
     ]);
 
-    expect(messages).toHaveLength(3);
+    expect(messages).toHaveLength(2);
     expect(messages[0].role).toBe("user");
     expect(messages[1].role).toBe("assistant");
-    expect(messages[2].role).toBe("assistant");
+    expect(parts(messages[1]).map((part) => part.type)).toEqual([
+      "text",
+      "tool-call",
+      "text",
+    ]);
+  });
+
+  it("starts a new assistant message after a user item", () => {
+    const messages = toMessages([
+      { role: "assistant", content: "First." },
+      { role: "user", content: "again" },
+      { role: "assistant", content: "Second." },
+    ]);
+
+    expect(messages.map((message) => message.role)).toEqual([
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+  });
+
+  it("dates the merged message by the turn's last item", () => {
+    const messages = toMessages([
+      {
+        role: "assistant",
+        content: "Working.",
+        timestamp_utc: "2026-09-09T00:00:00.000000Z",
+      },
+      { role: "assistant", content: "Done.", timestamp_utc: "2026-09-09T00:01:00.000000Z" },
+    ]);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0].createdAt).toEqual(new Date("2026-09-09T00:01:00.000000Z"));
   });
 
   it("attaches the stored result to its tool call", () => {

@@ -1,5 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import type { Incoming, ToolCall } from "@nosis/protocol";
+import type { Incoming, Usage } from "@nosis/protocol";
 import type { SessionItem } from "./api";
 
 /** A transcript item, plus the streaming state the live turn needs. */
@@ -12,6 +12,8 @@ export type Applied = {
   items: TranscriptItem[];
   notice?: Notice;
   approval?: { requestId: string; command: string } | null;
+  /** Tokens the finished turn used, or null when the model reported none. */
+  usage?: Usage | null;
   /** Set once the turn ended, so the caller can reload the session. */
   finished?: boolean;
 };
@@ -76,7 +78,7 @@ export function applyMessage(
       };
 
     case "turn_completed":
-      return { items, approval: null, finished: true };
+      return { items, approval: null, finished: true, usage: message.usage };
 
     case "turn_cancelled":
       return {
@@ -146,40 +148,78 @@ function settle(items: TranscriptItem[]): TranscriptItem[] {
   return [...items.slice(0, -1), { ...last, streaming: false }];
 }
 
-/** Groups stored items into the messages assistant-ui renders. */
+/** One rendered part of a message. */
+type Part = Exclude<ThreadMessageLike["content"], string>[number];
+
+/** A message whose parts are still being appended, item by item. */
+type OpenMessage = {
+  id: string;
+  role: ThreadMessageLike["role"];
+  content: Part[];
+  createdAt?: Date;
+};
+
+/** The parts one transcript item contributes, in the order the model emitted them. */
+function itemParts(item: TranscriptItem, results: Map<string, ToolOutcome>): Part[] {
+  const parts: Part[] = [];
+  // The model reasons before it answers, so reasoning comes first.
+  if (item.reasoning) parts.push({ type: "reasoning", text: item.reasoning });
+  if (item.content) parts.push({ type: "text", text: item.content });
+  for (const call of item.tool_calls ?? []) {
+    parts.push({
+      type: "tool-call",
+      toolCallId: call.id,
+      toolName: call.name,
+      args: call.arguments,
+      argsText: JSON.stringify(call.arguments),
+      result: results.get(call.id),
+      isError: results.get(call.id)?.ok === false,
+    });
+  }
+  return parts;
+}
+
+/**
+ * Groups stored items into the messages assistant-ui renders.
+ *
+ * One turn writes several assistant items — text, tool calls, then more
+ * text — and they are a single reply, so consecutive assistant items
+ * accumulate into one message and share one avatar. A user item starts
+ * the next group.
+ */
 export function toMessages(items: TranscriptItem[]): ThreadMessageLike[] {
   const results = new Map(
     items
-      .filter((item) => item.role === "tool" && item.content)
-      .map((item) => [item.tool_call_id, JSON.parse(item.content!)]),
+      .filter(
+        (item): item is TranscriptItem & { tool_call_id: string; content: string } =>
+          item.role === "tool" && Boolean(item.content),
+      )
+      .map((item) => [item.tool_call_id, JSON.parse(item.content)]),
   );
   const messages: ThreadMessageLike[] = [];
+  let open: OpenMessage | null = null;
 
   items.forEach((item, index) => {
     if (item.role === "tool") return;
-    const content: Exclude<ThreadMessageLike["content"], string> = [
-      ...(item.content
-        ? [{ type: "text" as const, text: item.content }]
-        : []),
-      ...(item.tool_calls ?? []).map((call: ToolCall) => ({
-        type: "tool-call" as const,
-        toolCallId: call.id,
-        toolName: call.name,
-        args: call.arguments,
-        argsText: JSON.stringify(call.arguments),
-        result: results.get(call.id),
-        isError: results.get(call.id)?.ok === false,
-      })),
-    ];
+    const parts = itemParts(item, results);
 
-    messages.push({
+    if (item.role === "assistant" && open) {
+      open.content.push(...parts);
+      // The timestamp belongs to the finished turn, so the newest item wins.
+      if (item.timestamp_utc) open.createdAt = new Date(item.timestamp_utc);
+      return;
+    }
+
+    const message: OpenMessage = {
       id: String(index),
       role: item.role,
-      content,
+      content: parts,
       createdAt: item.timestamp_utc
         ? new Date(item.timestamp_utc)
         : undefined,
-    });
+    };
+    open = item.role === "assistant" ? message : null;
+    messages.push(message);
   });
 
   return messages;
