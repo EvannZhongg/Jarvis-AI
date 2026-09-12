@@ -33,6 +33,8 @@ export type State = {
   workspace: string;
   model: string;
   entries: Entry[];
+  /** Latest MCP startup status; cleared once the agent is ready. */
+  mcpStatus: string | null;
   approval: {
     requestId: string;
     command: string;
@@ -59,6 +61,7 @@ export const initialState: State = {
   workspace: '',
   model: '',
   entries: [],
+  mcpStatus: null,
   approval: null,
   turnId: null,
   usage: null,
@@ -199,15 +202,7 @@ function applyMessage(state: State, message: Incoming): State {
     case 'mcp_server_status':
       return {
         ...state,
-        entries: [
-          ...state.entries,
-          {
-            kind: 'notice',
-            id: nextId('notice'),
-            level: 'info',
-            text: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? '' : ` (${message.tool_count} tools)`}${message.error === undefined ? '' : ` — ${message.error}`}`,
-          },
-        ],
+        mcpStatus: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? '' : ` (${message.tool_count} tools)`}${message.error === undefined ? '' : ` — ${message.error}`}`,
       };
 
     case 'ready':
@@ -217,6 +212,7 @@ function applyMessage(state: State, message: Incoming): State {
         sessionId: message.session_id,
         workspace: message.workspace,
         model: message.model,
+        mcpStatus: null,
         entries: message.resumed
           ? [
               ...state.entries,

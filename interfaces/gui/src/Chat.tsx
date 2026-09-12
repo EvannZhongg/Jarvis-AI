@@ -74,6 +74,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
   const [notice, setNotice] = useState<Notice | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
   const socketRef = useRef<SessionSocket | null>(null);
+  const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnCounter = useRef(0);
   const messages = useMemo(() => toMessages(items), [items]);
 
@@ -95,8 +96,20 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
     return () => {
       socketRef.current?.close();
       socketRef.current = null;
+      if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
     };
   }, [model]);
+
+  const showNotice = useCallback((next: Notice, transient = false) => {
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    setNotice(next);
+    if (transient) {
+      noticeTimeoutRef.current = setTimeout(() => {
+        noticeTimeoutRef.current = null;
+        setNotice(null);
+      }, 4000);
+    }
+  }, []);
 
   const endTurn = useCallback(async () => {
     runningRef.current = false;
@@ -120,7 +133,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
       onMessage: (message) => {
         const applied = applyMessage(itemsRef.current, message);
         showItems(applied.items);
-        if (applied.notice) setNotice(applied.notice);
+        if (applied.notice) showNotice(applied.notice, message.type === "mcp_server_status");
         if (applied.approval !== undefined) setApproval(applied.approval);
         if (applied.usage !== undefined) onUsageChange(applied.usage);
         if (applied.finished) void endTurn();
@@ -128,14 +141,14 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
       onClose: () => {
         socketRef.current = null;
         if (runningRef.current) {
-          setNotice({
+          showNotice({
             level: "error",
             text: "连接已断开，本轮对话未完成。已执行的工具操作不会撤销。",
           });
           void endTurn();
         }
       },
-      onError: () => setNotice({ level: "error", text: "无法连接 Nosis。" }),
+      onError: () => showNotice({ level: "error", text: "无法连接 Nosis。" }),
     });
     socketRef.current = socket;
     return socket;
@@ -149,6 +162,7 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
     runningRef.current = true;
     setRunning(true);
     onBusyChange(true);
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
     setNotice(null);
     // Tokens belong to the turn that is running, not to the previous one.
     onUsageChange(null);

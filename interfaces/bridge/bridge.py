@@ -27,7 +27,7 @@ from agent_core import (
 )
 from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
-from agent_core.mcp.manager import McpClientManager
+from agent_core.mcp.manager import McpClientManager, McpServerStatus
 
 from .config import load_config
 from .protocol import decode, encode, event_to_message, usage_to_dict
@@ -143,13 +143,7 @@ class Bridge:
         self._mcp = McpClientManager(
             agent_config.mcp,
             workspace.path,
-            on_status=lambda status: self.emit(
-                "mcp_server_status",
-                server=status.server,
-                status=status.status,
-                tool_count=status.tool_count,
-                error=status.error,
-            ),
+            on_status=self._emit_mcp_status,
         )
         mcp_tools = self._mcp.start()
         self._agent = Agent(
@@ -181,6 +175,17 @@ class Bridge:
             resumed=resumed,
             message_count=len(self._session.items),
         )
+
+    def _emit_mcp_status(self, status: McpServerStatus) -> None:
+        fields: dict[str, object] = {
+            "server": status.server,
+            "status": status.status,
+        }
+        if status.tool_count is not None:
+            fields["tool_count"] = status.tool_count
+        if status.error is not None:
+            fields["error"] = status.error
+        self.emit("mcp_server_status", **fields)
 
     def run_turn(self, message: dict[str, object]) -> None:
         if self._agent is None or self._session is None or self._store is None:

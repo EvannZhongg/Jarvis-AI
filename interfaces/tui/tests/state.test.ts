@@ -53,6 +53,16 @@ describe('reducer', () => {
     expect(state.model).toBe('deepseek/deepseek-chat');
   });
 
+  it('keeps MCP startup status out of the persistent transcript', () => {
+    const state = reducer(initialState, {
+      type: 'message',
+      message: { type: 'mcp_server_status', server: 'mineru', status: 'ready', tool_count: 2 },
+    });
+    expect(state.mcpStatus).toBe('MCP mineru: ready (2 tools)');
+    expect(state.entries).toEqual([]);
+    expect(reducer(state, { type: 'message', message: READY }).mcpStatus).toBeNull();
+  });
+
   it('notes resumed sessions', () => {
     const state = reducer(initialState, {
       type: 'message',

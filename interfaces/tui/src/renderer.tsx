@@ -103,7 +103,7 @@ export function StatusBar({ state, elapsed }: { state: State; elapsed: number })
         <Text color="yellow">
           <Spinner type="dots" />
         </Text>
-        <Text dimColor> starting agent…</Text>
+        <Text dimColor>{state.mcpStatus ? ` ${state.mcpStatus}` : ' starting agent…'}</Text>
       </Box>
     );
   }
