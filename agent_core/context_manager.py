@@ -149,7 +149,9 @@ class ContextManager:
         """Return only complete turns preceding the active run."""
         turn_start = self._turn_start
         if turn_start is None:
-            turn_start = len(self._session.items)
+            raise RuntimeError(
+                "begin_turn must be called before archiving context"
+            )
         archive_start = self._session.archived_item_count
         archive_end = max(
             archive_start,

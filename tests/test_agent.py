@@ -9,6 +9,7 @@ from agent_core import (
     AgentConfig,
     AssistantMessageDeltaEvent,
     AssistantMessageEvent,
+    ContextManager,
     ContextWindowExceededError,
     LLMProvider,
     LLMRequest,
@@ -549,6 +550,21 @@ class AgentTest(unittest.TestCase):
         timeline = archived[0].content or ""
         self.assertNotIn("assistant step", timeline)
         self.assertNotIn("tool result", timeline)
+
+    def test_context_archive_requires_active_turn(self) -> None:
+        provider = MockProvider(["checkpoint"])
+        context = ContextManager(
+            provider=provider,
+            session=Session(session_id="session-1"),
+            system_prompt="You are helpful.",
+            config=AGENT_CONFIG,
+        )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "begin_turn must be called before archiving context",
+        ):
+            context.archive()
 
     def test_returns_unknown_tool_error_to_model(self) -> None:
         provider = MockProvider(
