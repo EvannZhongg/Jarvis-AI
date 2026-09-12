@@ -148,6 +148,7 @@ class Bridge:
                 server=status.server,
                 status=status.status,
                 tool_count=status.tool_count,
+                error=status.error,
             ),
         )
         mcp_tools = self._mcp.start()

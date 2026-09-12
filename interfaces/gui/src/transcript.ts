@@ -41,8 +41,8 @@ export function applyMessage(
       return {
         items,
         notice: {
-          level: message.status === "ready" || message.status === "closed" ? "info" : "error",
-          text: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? "" : ` (${message.tool_count} tools)`}`,
+          level: "info",
+          text: `MCP ${message.server}: ${message.status}${message.tool_count === undefined ? "" : ` (${message.tool_count} tools)`}${message.error === undefined ? "" : ` — ${message.error}`}`,
         },
       };
 

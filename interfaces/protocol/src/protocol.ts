@@ -77,7 +77,7 @@ export type Incoming =
       server?: string;
       tool_name?: string;
     }
-  | { type: 'mcp_server_status'; server: string; status: string; tool_count?: number }
+  | { type: 'mcp_server_status'; server: string; status: string; tool_count?: number; error?: string }
   | { type: 'turn_completed'; turn_id: string; usage: Usage | null }
   | { type: 'turn_cancelled'; turn_id: string; persisted: boolean }
   | { type: 'turn_failed'; turn_id: string; error: ProtocolError }

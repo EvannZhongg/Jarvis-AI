@@ -24,6 +24,7 @@ class McpServerStatus:
     server: str
     status: str
     tool_count: int | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -138,15 +139,23 @@ class McpClientManager:
             async with AsyncExitStack() as stack:
                 for config in self._servers.values():
                     self._emit(config.name, "connecting")
-                    session = await asyncio.wait_for(
-                        self._connect(stack, config),
-                        timeout=config.startup_timeout_seconds,
-                    )
+                    try:
+                        session = await asyncio.wait_for(
+                            self._connect(stack, config),
+                            timeout=config.startup_timeout_seconds,
+                        )
+                        server_tools = await asyncio.wait_for(
+                            self._discover_tools(session, config),
+                            timeout=config.startup_timeout_seconds,
+                        )
+                    except Exception as error:
+                        self._emit(
+                            config.name,
+                            "unavailable",
+                            error=_exception_message(error),
+                        )
+                        continue
                     sessions[config.name] = session
-                    server_tools = await asyncio.wait_for(
-                        self._discover_tools(session, config),
-                        timeout=config.startup_timeout_seconds,
-                    )
                     for tool in server_tools:
                         name = tool.definition.name
                         if name in names:
@@ -274,10 +283,14 @@ class McpClientManager:
         return data
 
     def _emit(
-        self, server: str, status: str, tool_count: int | None = None
+        self,
+        server: str,
+        status: str,
+        tool_count: int | None = None,
+        error: str | None = None,
     ) -> None:
         if self._on_status is not None:
-            self._on_status(McpServerStatus(server, status, tool_count))
+            self._on_status(McpServerStatus(server, status, tool_count, error))
 
 
 def _error_message(data: dict[str, Any]) -> str:
@@ -294,3 +307,8 @@ def _unwrap_exception_group(error: BaseException) -> BaseException:
     if isinstance(error, BaseExceptionGroup) and len(error.exceptions) == 1:
         return _unwrap_exception_group(error.exceptions[0])
     return error
+
+
+def _exception_message(error: BaseException) -> str:
+    error = _unwrap_exception_group(error)
+    return str(error) or type(error).__name__
