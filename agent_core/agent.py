@@ -161,9 +161,9 @@ class Agent:
             input_tokens = self._provider.count_input_tokens(request)
             if self._compression_enabled and (
                 input_tokens >= self._context_budget
-                and self._archivable_items()
+                and self._archivable_items(turn_start)
             ):
-                checkpoint_number = self._archive_context()
+                checkpoint_number = self._archive_context(turn_start)
                 if on_event is not None:
                     on_event(ContextArchivedEvent(checkpoint_number))
                 continue
@@ -317,10 +317,10 @@ class Agent:
             max_output_tokens=self._config.max_output_tokens,
         )
 
-    def _archive_context(self) -> int:
+    def _archive_context(self, turn_start: int) -> int:
         """Compress the unarchived transcript into the session checkpoint."""
         previous = self._session.archived_summary
-        items = self._archivable_items()
+        items = self._archivable_items(turn_start)
         system_prompt = load_consolidator_prompt()
         if previous is not None:
             system_prompt = (
@@ -344,12 +344,19 @@ class Agent:
         )
         return self._session.archived_item_count
 
-    def _archivable_items(self) -> list[Message]:
-        recent = self._session.recent_items
-        # Keep the newest user turn explicit; it is the active question.
-        if len(recent) > 1 and recent[-1].role == "user":
-            return recent[:-1]
-        return recent
+    def _archivable_items(self, turn_start: int) -> list[Message]:
+        """Return only complete turns preceding the active run.
+
+        ``turn_start`` is captured before the current user message is added,
+        so assistant/tool messages produced by the active model loop can
+        never enter a checkpoint.
+        """
+        archive_start = self._session.archived_item_count
+        archive_end = max(
+            archive_start,
+            min(turn_start, len(self._session.items)),
+        )
+        return self._session.items[archive_start:archive_end]
 
 
 def _tool_call_key(tool_call: ToolCall) -> tuple[str, str]:
