@@ -46,6 +46,10 @@ class SubagentTool(Tool):
         self._tools = tuple(tools)
         self._system_prompt = system_prompt
         if sessions_directory is None:
+            if not parent_session_id:
+                raise ValueError(
+                    "parent_session_id is required when sessions_directory is not provided"
+                )
             sessions_directory = default_sessions_directory()
         sessions_root = sessions_directory.expanduser().resolve()
         # Keep artifacts addressable from the shared Session root; only the
