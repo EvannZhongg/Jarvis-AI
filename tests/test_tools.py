@@ -23,6 +23,7 @@ from agent_core import (
     ToolResult,
     WebSearchTool,
     Workspace,
+    SubagentRegistry,
     create_tools,
 )
 from agent_core.tools.builtin.search_files import MAX_OUTPUT_CHARS
@@ -168,6 +169,63 @@ class ToolFactoryTest(unittest.TestCase):
             [tool.definition.name for tool in tools],
             ["web_search"],
         )
+
+    def test_creates_enabled_registered_subagents(self) -> None:
+        class RegisteredSubagent(Tool):
+            @property
+            def definition(self) -> ToolDefinition:
+                return ToolDefinition(
+                    name="reviewer_agent",
+                    description="A registered subagent.",
+                    parameters={"type": "object", "properties": {}},
+                )
+
+            def execute(self, arguments):
+                return "done"
+
+        class UnusedExecutor:
+            def execute(self, command, timeout_seconds=60):
+                raise AssertionError("executor should not be called")
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = create_tools(
+                ToolConfig(enabled=frozenset({"subagent"})),
+                Workspace(Path(directory)),
+                UnusedExecutor(),
+                subagent_registry=SubagentRegistry((RegisteredSubagent(),)),
+            )
+
+        self.assertEqual(
+            [tool.definition.name for tool in tools],
+            ["reviewer_agent"],
+        )
+
+    def test_does_not_create_disabled_registered_subagents(self) -> None:
+        class RegisteredSubagent(Tool):
+            @property
+            def definition(self) -> ToolDefinition:
+                return ToolDefinition(
+                    name="reviewer_agent",
+                    description="A registered subagent.",
+                    parameters={"type": "object", "properties": {}},
+                )
+
+            def execute(self, arguments):
+                return "done"
+
+        class UnusedExecutor:
+            def execute(self, command, timeout_seconds=60):
+                raise AssertionError("executor should not be called")
+
+        with tempfile.TemporaryDirectory() as directory:
+            tools = create_tools(
+                ToolConfig(enabled=frozenset()),
+                Workspace(Path(directory)),
+                UnusedExecutor(),
+                subagent_registry=SubagentRegistry((RegisteredSubagent(),)),
+            )
+
+        self.assertEqual(tools, ())
 
 
 class FakeExa:

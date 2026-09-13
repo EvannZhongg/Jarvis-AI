@@ -21,6 +21,7 @@ from agent_core import (
     McpApprovalPolicy,
     ShellApprovalPolicy,
     SubprocessCommandExecutor,
+    SubagentRegistry,
     Workspace,
     create_builtin_tools,
     SubagentTool,
@@ -135,12 +136,7 @@ class Bridge:
             self._store.load(str(session_id)) if resumed else Session()
         )
 
-        builtin_tools = create_builtin_tools(
-            agent_config.tools,
-            workspace,
-            SubprocessCommandExecutor(workspace.path),
-            shell_timeout_seconds=agent_config.shell_timeout_seconds,
-        )
+        subagent_registry = SubagentRegistry()
         if agent_config.tools.is_enabled("subagent"):
             # Sub-agents run with an isolated session and their own tool config.
             subagent_provider_config = load_config(
@@ -154,20 +150,28 @@ class Bridge:
                 SubprocessCommandExecutor(workspace.path),
                 shell_timeout_seconds=agent_config.shell_timeout_seconds,
             )
-            subagent_tool = SubagentTool(
-                provider=LiteLLMProvider(
-                    model=subagent_provider_config.model,
-                    base_url=subagent_provider_config.url,
-                    api_key=subagent_provider_config.key,
-                    max_context_tokens=subagent_provider_config.max_context_tokens,
-                ),
-                config=agent_config,
-                workspace=workspace,
-                tools=child_tools,
-                parent_session_id=self._session.session_id,
-                tool_policy=ShellApprovalPolicy(self.request_permission),
+            subagent_registry.register(
+                SubagentTool(
+                    provider=LiteLLMProvider(
+                        model=subagent_provider_config.model,
+                        base_url=subagent_provider_config.url,
+                        api_key=subagent_provider_config.key,
+                        max_context_tokens=subagent_provider_config.max_context_tokens,
+                    ),
+                    config=agent_config,
+                    workspace=workspace,
+                    tools=child_tools,
+                    parent_session_id=self._session.session_id,
+                    tool_policy=ShellApprovalPolicy(self.request_permission),
+                )
             )
-            builtin_tools = (*builtin_tools, subagent_tool)
+        builtin_tools = create_builtin_tools(
+            agent_config.tools,
+            workspace,
+            SubprocessCommandExecutor(workspace.path),
+            shell_timeout_seconds=agent_config.shell_timeout_seconds,
+            subagent_registry=subagent_registry,
+        )
         self._mcp = McpClientManager(
             agent_config.mcp,
             workspace.path,
