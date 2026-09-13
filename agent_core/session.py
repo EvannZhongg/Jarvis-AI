@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import uuid4
 
 from .tools import ToolCall
+from .content import Content, ImagePart, content_parts
 
 
 MessageRole = Literal["system", "user", "assistant", "tool"]
@@ -12,11 +13,15 @@ MessageRole = Literal["system", "user", "assistant", "tool"]
 @dataclass(frozen=True)
 class Message:
     role: MessageRole
-    content: str | None
+    content: Content
     timestamp_utc: datetime | None = None
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
     reasoning: str | None = None
+
+    @property
+    def parts(self):
+        return content_parts(self.content)
 
 
 @dataclass
@@ -48,12 +53,17 @@ class Session:
     def add_item(
         self,
         role: MessageRole,
-        content: str | None,
+        content: Content,
         timestamp_utc: datetime | None = None,
         tool_calls: tuple[ToolCall, ...] = (),
         tool_call_id: str | None = None,
         reasoning: str | None = None,
+        attachments: tuple[ImagePart, ...] = (),
     ) -> None:
+        if attachments:
+            parts = list(content_parts(content))
+            parts.extend(attachments)
+            content = tuple(parts)
         self.items.append(
             Message(
                 role=role,

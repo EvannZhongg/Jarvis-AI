@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .llm import LLMRequest, LLMResponse
 from .session import Message, Session
+from .content import ImagePart, TextPart
 from .session_paths import session_log_path
 from .tools import ToolCall
 
@@ -141,14 +142,24 @@ def _session_title(path: Path, session_id: str) -> str:
                 continue
             for item in json.loads(line)["items"]:
                 if item["role"] == "user" and item.get("content"):
-                    return item["content"]
+                    content = item["content"]
+                    if isinstance(content, str):
+                        return content
+                    if isinstance(content, list):
+                        text = "".join(
+                            str(part.get("text", ""))
+                            for part in content
+                            if isinstance(part, dict) and part.get("type") == "text"
+                        )
+                        if text:
+                            return text
     return session_id
 
 
 def _message_to_dict(message: Message) -> dict[str, object]:
     data: dict[str, object] = {
         "role": message.role,
-        "content": message.content,
+        "content": _content_to_dict(message),
     }
     if message.timestamp_utc is not None:
         data["timestamp_utc"] = _format_utc(message.timestamp_utc)
@@ -168,12 +179,39 @@ def _message_to_dict(message: Message) -> dict[str, object]:
     return data
 
 
+def _content_to_dict(message: Message) -> object:
+    parts = message.parts
+    if not parts:
+        return None
+    if all(isinstance(part, TextPart) for part in parts):
+        return "".join(part.text for part in parts)
+    return [
+        ({"type": "text", "text": part.text}
+         if isinstance(part, TextPart)
+         else {"type": "image", "path": part.path, "mime_type": part.mime_type})
+        for part in parts
+    ]
+
+
 def _message_from_dict(data: dict[str, object]) -> Message:
     timestamp_utc = data.get("timestamp_utc")
     tool_calls = data.get("tool_calls", [])
+    content = data.get("content")
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if not isinstance(part, dict) or not isinstance(part.get("type"), str):
+                raise ValueError("message content part must be an object")
+            if part["type"] == "text":
+                parts.append(TextPart(text=str(part.get("text", ""))))
+            elif part["type"] == "image":
+                parts.append(ImagePart(path=str(part.get("path", "")), mime_type=str(part.get("mime_type", "image/png"))))
+            else:
+                raise ValueError(f"unknown content part type: {part['type']}")
+        content = tuple(parts)
     return Message(
         role=data["role"],
-        content=data.get("content"),
+        content=content,
         timestamp_utc=(
             _parse_utc(timestamp_utc)
             if isinstance(timestamp_utc, str)

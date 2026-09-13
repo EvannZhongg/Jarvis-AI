@@ -74,7 +74,8 @@ nosis
     "search_files": true,
     "list_directory": true,
     "shell": true,
-    "web_search": false
+    "web_search": false,
+    "analyze_image": true
   }
 }
 ```
@@ -137,6 +138,11 @@ HTTP Server 使用 `transport: "streamable_http"` 和 `url`，请求头中的
   读取。只填当前所选服务商的密钥，Ollama 等无密钥服务可以省略。
 * `max_context_tokens` 可选：填写时以它作为模型最大上下文；省略时读取 LiteLLM
   的模型元数据，元数据缺失则必须显式填写。
+* LiteLLM 会从模型元数据的 `supports_vision` 自动识别图片输入能力，不需要为每个
+  Provider 重复填写模态列表。主模型支持图片时，附件直接作为原生多模态消息发送。
+* `main_agent.vision_provider` 可选，仅用于覆盖视觉 Provider 的自动选择。主模型是纯
+  文本模型且未指定覆盖时，系统会从已配置且凭据可用的 Provider 中自动选择第一个
+  LiteLLM 声明支持视觉的模型；没有可用视觉 Provider 时，`analyze_image` 不会注册。
 * OpenAI 兼容服务需要在 `model` 上带 LiteLLM 的接口前缀，例如智谱填
   `openai/glm-5.3`、`url` 填 `https://open.bigmodel.cn/api/paas/v4/`。`providers`
   里的条目名称不会自动作为 LiteLLM 的服务商标识。
@@ -153,6 +159,9 @@ EXA_API_KEY=your-api-key
 `web_search` 调用会返回缺少密钥的错误。
 
 `.env`、`provider_config.json` 和 Session 数据都不会提交到仓库。
+
+GUI 支持上传图片。图片会保存为工作区下的 `.nosis/attachments/<id>.<ext>`，Session
+只记录路径和 MIME 类型；只有 Provider 发起请求时才会读取并转换成 API 所需格式。
 
 ## GUI
 

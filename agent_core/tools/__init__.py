@@ -17,6 +17,7 @@ from .builtin import (
     WebSearchTool,
     SubagentTool,
     SubagentRegistry,
+    AnalyzeImageTool,
 )
 from .config import ToolConfig, load_tool_config
 from .factory import create_builtin_tools, create_tools

@@ -29,7 +29,15 @@ class LLMResponse:
     usage: TokenUsage | None = None
 
 
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    input_modalities: frozenset[str] = frozenset({"text"})
+
+
 class LLMProvider(ABC):
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities()
     @property
     @abstractmethod
     def max_context_tokens(self) -> int:

@@ -9,6 +9,7 @@ TOOL_NAMES = (
     "shell",
     "web_search",
     "subagent",
+    "analyze_image",
 )
 
 

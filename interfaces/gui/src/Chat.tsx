@@ -5,9 +5,9 @@ import {
   type AppendMessage, type ReasoningMessagePartProps, type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
-import { ArrowUp, Check, ChevronDown, ChevronRight, LoaderCircle, ShieldCheck, Square, Terminal, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, ChevronRight, ImagePlus, LoaderCircle, Paperclip, ShieldCheck, Square, Terminal, X } from "lucide-react";
 import remarkGfm from "remark-gfm";
-import { get, sessionUrl, type ModelOption, type Session } from "./api";
+import { get, sessionUrl, uploadAttachments, type ImageAttachment, type ModelOption, type Session } from "./api";
 import { SessionSocket } from "./session";
 import { applyMessage, toMessages, type Notice, type TranscriptItem } from "./transcript";
 import type { Usage } from "@nosis/protocol";
@@ -73,9 +73,11 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const socketRef = useRef<SessionSocket | null>(null);
   const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const turnCounter = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messages = useMemo(() => toMessages(items), [items]);
 
   // Socket callbacks fire outside React's render, so the transcript and
@@ -182,9 +184,28 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
 
   async function onNew(message: AppendMessage) {
     const text = message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
-    if (!text || runningRef.current) return;
+    if ((!text && pendingFiles.length === 0) || runningRef.current) return;
 
-    showItems([...itemsRef.current, { role: "user", content: text }]);
+    let attachments: ImageAttachment[] = [];
+    if (pendingFiles.length) {
+      try {
+        attachments = await uploadAttachments(pendingFiles);
+      } catch (error) {
+        showNotice({ level: "error", text: String(error) });
+        return;
+      }
+      setPendingFiles([]);
+    }
+
+    showItems([
+      ...itemsRef.current,
+      {
+        role: "user",
+        content: attachments.length
+          ? [{ type: "text", text }, ...attachments]
+          : text,
+      },
+    ]);
     runningRef.current = true;
     setRunning(true);
     onBusyChange(true);
@@ -195,7 +216,12 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
 
     turnCounter.current += 1;
     const socket = socketRef.current ?? connect();
-    socket.send({ type: "user_turn", turn_id: `turn-${turnCounter.current}`, text });
+    socket.send({
+      type: "user_turn",
+      turn_id: `turn-${turnCounter.current}`,
+      text,
+      ...(attachments.length ? { attachments } : {}),
+    });
   }
 
   function respond(approved: boolean) {
@@ -220,7 +246,10 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
         {running && <div className="activity" role="status"><LoaderCircle size={13} className="spin" />{approval ? "等待你的确认" : "Nosis 正在处理…"}
           {!approval && <button className="stop-button" aria-label="停止执行" onClick={() => socketRef.current?.send({ type: "cancel" })}><Square size={11} /> 停止</button>}
         </div>}
+        {pendingFiles.length > 0 && <div className="attachment-list" aria-label="待发送图片">{pendingFiles.map((file) => <span key={`${file.name}-${file.lastModified}`} className="attachment-chip"><ImagePlus size={13} />{file.name}</span>)}</div>}
         <ComposerPrimitive.Root className="composer"><ComposerPrimitive.Input placeholder="Ask Nosis…" aria-label="消息" rows={2} autoFocus /><div className="composer-bottom">
+          <button type="button" className="attachment-button" aria-label="添加图片" title="添加图片" disabled={disabled || running} onClick={() => fileInputRef.current?.click()}><Paperclip size={15} /></button>
+          <input ref={fileInputRef} className="attachment-input" type="file" accept="image/*" multiple onChange={(event) => { setPendingFiles((files) => [...files, ...Array.from(event.target.files ?? [])]); event.currentTarget.value = ""; }} />
           <label className="model-selector" title={models.find((option) => option.id === model)?.model}>
             <select aria-label="选择模型" value={model} disabled={disabled || running} onChange={(event) => onModelChange(event.target.value)}>
               {models.map((option) => <option key={option.id} value={option.id}>{option.model}</option>)}

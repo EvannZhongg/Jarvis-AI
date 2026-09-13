@@ -9,12 +9,15 @@ cancellation therefore behave exactly as they do in the TUI.
 import argparse
 import asyncio
 import json
+import mimetypes
 import signal
+import shutil
 import sys
 from uuid import uuid4
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -144,6 +147,48 @@ def create_app(
         except (OSError, ValueError) as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         return {"root": str(workspace.path), **listing}
+
+    @app.post("/api/attachments")
+    async def upload_attachments(files: list[UploadFile] = File(...)) -> dict[str, object]:
+        """Persist browser images as workspace-relative attachment paths."""
+        attachment_root = (workspace.path / ".nosis" / "attachments").resolve()
+        attachment_root.mkdir(parents=True, exist_ok=True)
+        attachments = []
+        for upload in files:
+            mime_type = upload.content_type or ""
+            suffix_by_type = {
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+            }
+            if mime_type not in suffix_by_type:
+                raise HTTPException(status_code=415, detail="只能上传图片附件。")
+            filename = f"{uuid4().hex}{suffix_by_type[mime_type]}"
+            path = attachment_root / filename
+            try:
+                with path.open("wb") as target:
+                    shutil.copyfileobj(upload.file, target)
+            except OSError as error:
+                raise HTTPException(status_code=500, detail=str(error)) from error
+            attachments.append({
+                "type": "image",
+                "path": f".nosis/attachments/{filename}",
+                "mime_type": mime_type,
+            })
+        return {"attachments": attachments}
+
+    @app.get("/api/attachments/{filename}")
+    def get_attachment(filename: str) -> FileResponse:
+        attachment_root = (workspace.path / ".nosis" / "attachments").resolve()
+        path = (attachment_root / filename).resolve()
+        try:
+            path.relative_to(attachment_root)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail="附件不存在。") from error
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="附件不存在。")
+        return FileResponse(path, media_type=mimetypes.guess_type(path.name)[0])
 
     @app.websocket("/api/session")
     async def run_session(websocket: WebSocket) -> None:

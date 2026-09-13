@@ -23,6 +23,7 @@ from agent_core import (
     SubprocessCommandExecutor,
     SubagentRegistry,
     Workspace,
+    ImagePart,
     create_builtin_tools,
     SubagentTool,
     load_agent_config,
@@ -31,7 +32,7 @@ from agent_core.prompts import load_system_prompt
 from agent_core.providers import LiteLLMProvider
 from agent_core.mcp.manager import McpClientManager, McpServerStatus
 
-from .config import load_config
+from .config import load_config, load_model_options, load_vision_config
 from .protocol import decode, encode, event_to_message, usage_to_dict
 
 
@@ -50,6 +51,7 @@ class Bridge:
         self._session: Session | None = None
         self._store: JsonlSessionStore | None = None
         self._mcp: McpClientManager | None = None
+        self._workspace: Workspace | None = None
 
     def emit(self, type: str, **fields: object) -> None:
         self._stdout.write(encode({"type": type, **fields}) + "\n")
@@ -122,6 +124,7 @@ class Bridge:
         load_dotenv(config_path.parent / ".env")
 
         workspace = Workspace(Path(str(message["workspace"])))
+        self._workspace = workspace
         provider = message.get("provider")
         config = load_config(
             config_path,
@@ -165,12 +168,39 @@ class Bridge:
                     tool_policy=ShellApprovalPolicy(self.request_permission),
                 )
             )
+        main_provider = LiteLLMProvider(
+            model=config.model,
+            base_url=config.url,
+            api_key=config.key,
+            max_context_tokens=config.max_context_tokens,
+        )
+        main_provider_name = (
+            provider
+            if isinstance(provider, str) and provider
+            else load_model_options(config_path)[0]
+        )
+        vision_config = (
+            load_vision_config(config_path, main_provider_name)
+            if "image" not in main_provider.capabilities.input_modalities
+            else None
+        )
+        vision_provider = (
+            LiteLLMProvider(
+                model=vision_config.model,
+                base_url=vision_config.url,
+                api_key=vision_config.key,
+                max_context_tokens=vision_config.max_context_tokens,
+            )
+            if vision_config is not None
+            else None
+        )
         builtin_tools = create_builtin_tools(
             agent_config.tools,
             workspace,
             SubprocessCommandExecutor(workspace.path),
             shell_timeout_seconds=agent_config.shell_timeout_seconds,
             subagent_registry=subagent_registry,
+            vision_provider=vision_provider,
         )
         self._mcp = McpClientManager(
             agent_config.mcp,
@@ -179,12 +209,7 @@ class Bridge:
         )
         mcp_tools = self._mcp.start()
         self._agent = Agent(
-            provider=LiteLLMProvider(
-                model=config.model,
-                base_url=config.url,
-                api_key=config.key,
-                max_context_tokens=config.max_context_tokens,
-            ),
+            provider=main_provider,
             session=self._session,
             system_prompt=load_system_prompt(workspace),
             config=agent_config,
@@ -225,11 +250,15 @@ class Bridge:
 
         self._turn_id = str(message["turn_id"])
         try:
+            if self._workspace is None:
+                raise RuntimeError("bridge workspace is not initialized")
+            attachments = _parse_attachments(message.get("attachments"), self._workspace)
             result = self._agent.run(
                 str(message["text"]),
                 on_event=lambda event: self.emit(
                     **event_to_message(event, self._turn_id or "")
                 ),
+                attachments=attachments,
             )
         except (KeyboardInterrupt, Cancelled):
             # Without an AgentRunResult there is nothing to append, so
@@ -293,3 +322,30 @@ class Bridge:
         finally:
             if self._mcp is not None:
                 self._mcp.close()
+
+
+def _parse_attachments(value: object, workspace: Workspace) -> tuple[ImagePart, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError("user_turn.attachments must be an array")
+    result = []
+    for item in value:
+        if not isinstance(item, dict) or item.get("type") != "image":
+            raise ValueError("attachments must contain image objects")
+        path = item.get("path")
+        mime_type = item.get("mime_type", "image/png")
+        if not isinstance(path, str) or not path:
+            raise ValueError("image attachment path must be a non-empty string")
+        if not isinstance(mime_type, str) or not mime_type:
+            raise ValueError("image attachment mime_type must be a non-empty string")
+        resolved = workspace.resolve_path(path)
+        if not resolved.is_file():
+            raise ValueError(f"image attachment does not exist: {path}")
+        result.append(
+            ImagePart(
+                path=resolved.relative_to(workspace.path).as_posix(),
+                mime_type=mime_type,
+            )
+        )
+    return tuple(result)

@@ -1,4 +1,5 @@
 from ..execution import DEFAULT_COMMAND_TIMEOUT_SECONDS, CommandExecutor
+from ..llm import LLMProvider
 from ..workspace import Workspace
 from .base import Tool
 from .builtin import (
@@ -9,6 +10,7 @@ from .builtin import (
     ShellTool,
     SubagentRegistry,
     WebSearchTool,
+    AnalyzeImageTool,
 )
 from .config import ToolConfig
 
@@ -19,6 +21,7 @@ def create_builtin_tools(
     command_executor: CommandExecutor,
     shell_timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
     subagent_registry: SubagentRegistry | None = None,
+    vision_provider: LLMProvider | None = None,
 ) -> tuple[Tool, ...]:
     tools: list[Tool] = []
 
@@ -39,6 +42,8 @@ def create_builtin_tools(
         )
     if config.is_enabled("web_search"):
         tools.append(WebSearchTool())
+    if config.is_enabled("analyze_image") and vision_provider is not None:
+        tools.append(AnalyzeImageTool(vision_provider, workspace))
     if config.is_enabled("subagent") and subagent_registry is not None:
         tools.extend(subagent_registry.tools)
 

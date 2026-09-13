@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 
+from agent_core.providers import LiteLLMProvider
+
 
 DEFAULT_CONFIG_FILENAMES = (
     "provider_config.json",
@@ -137,6 +139,40 @@ def load_config(path: Path, provider: str | None = None, *, subagent: bool = Fal
     )
 
 
+def load_vision_config(path: Path, main_provider: str) -> ModelConfig | None:
+    """Load the optional vision provider used by ``analyze_image``.
+
+    Native multimodal main models do not need this setting.  A text-only
+    main model can opt into a vision model by setting
+    ``main_agent.vision_provider`` to a configured provider name.
+    """
+    with path.open(encoding="utf-8") as file:
+        data = json.load(file)
+    main_agent = data.get("main_agent")
+    if not isinstance(main_agent, dict):
+        raise ValueError("config field 'main_agent' must be an object")
+    configured = main_agent.get("vision_provider")
+    if configured is not None and configured != "":
+        if not isinstance(configured, str) or not configured.strip():
+            raise ValueError("config field 'main_agent.vision_provider' must be a non-empty string")
+        return load_config(path, configured.strip())
+
+    _, providers, _ = _read_config(path)
+    for name, selected in providers.items():
+        if name == main_provider or not isinstance(selected, dict):
+            continue
+        if not _provider_credentials_available(selected):
+            continue
+        model = _model_name(selected, name)
+        capabilities = LiteLLMProvider.capabilities_for_model(
+            model,
+            _optional_string(selected, "url", name),
+        )
+        if "image" in capabilities.input_modalities:
+            return load_config(path, name)
+    return None
+
+
 def _optional_string(
     data: dict[str, object],
     field: str,
@@ -165,3 +201,14 @@ def _optional_positive_integer(
             f"provider '{provider}' field '{field}' must be a positive integer"
         )
     return value
+
+
+def _provider_credentials_available(data: dict[str, object]) -> bool:
+    key = data.get("key")
+    if key is None:
+        return True
+    if not isinstance(key, str):
+        return False
+    if key.startswith("${") and key.endswith("}"):
+        return bool(os.environ.get(key[2:-1]))
+    return bool(key.strip())

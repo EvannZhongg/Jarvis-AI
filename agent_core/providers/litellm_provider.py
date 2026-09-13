@@ -1,10 +1,18 @@
+import base64
 import json
 from dataclasses import dataclass
 from typing import Callable
 
 from litellm import completion, get_model_info, token_counter
 
-from agent_core.llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
+from agent_core.llm import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    ProviderCapabilities,
+    TokenUsage,
+)
+from agent_core.content import ImagePart, TextPart
 from agent_core.session import Message
 from agent_core.tools import ToolCall, ToolDefinition
 
@@ -35,13 +43,40 @@ class LiteLLMProvider(LLMProvider):
                 model,
                 base_url,
             )
+        self._capabilities: ProviderCapabilities | None = None
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        if self._capabilities is None:
+            self._capabilities = self.capabilities_for_model(
+                self._model,
+                self._base_url,
+            )
+        return self._capabilities
+
+    @classmethod
+    def capabilities_for_model(
+        cls,
+        model: str,
+        base_url: str | None = None,
+    ) -> ProviderCapabilities:
+        modalities = {"text"}
+        try:
+            info = get_model_info(model=model, api_base=base_url)
+            if info.get("supports_vision") is True:
+                modalities.add("image")
+        except Exception:
+            # Capability discovery must not prevent text-only providers
+            # from being used when LiteLLM has no model metadata.
+            pass
+        return ProviderCapabilities(frozenset(modalities))
 
     @property
     def max_context_tokens(self) -> int:
         return self._max_context_tokens
 
     def count_input_tokens(self, request: LLMRequest) -> int:
-        messages = _request_messages(request)
+        messages = _request_messages(request, self)
         tools = _request_tools(request)
         return token_counter(
             model=self._model,
@@ -59,7 +94,7 @@ class LiteLLMProvider(LLMProvider):
             model=self._model,
             base_url=self._base_url,
             api_key=self._api_key,
-            messages=_request_messages(request),
+            messages=_request_messages(request, self),
             stream=True,
             # Streamed responses omit usage unless it is requested
             # explicitly; it arrives in a final usage-only chunk.
@@ -121,10 +156,22 @@ class LiteLLMProvider(LLMProvider):
         )
 
 
-def _request_messages(request: LLMRequest) -> list[dict[str, object]]:
+def _request_messages(
+    request: LLMRequest,
+    provider: LiteLLMProvider | None = None,
+) -> list[dict[str, object]]:
     return [
         {"role": "system", "content": request.system_prompt},
-        *[_message_to_dict(message) for message in request.messages],
+        *[
+            _message_to_dict(
+                message,
+                include_images=(
+                    provider is None
+                    or "image" in provider.capabilities.input_modalities
+                ),
+            )
+            for message in request.messages
+        ],
     ]
 
 
@@ -159,10 +206,14 @@ def _get_model_max_context_tokens(
     return max_context_tokens
 
 
-def _message_to_dict(message: Message) -> dict[str, object]:
+def _message_to_dict(
+    message: Message,
+    *,
+    include_images: bool = True,
+) -> dict[str, object]:
     data: dict[str, object] = {
         "role": message.role,
-        "content": message.content,
+        "content": _content_to_provider_format(message, include_images=include_images),
     }
     if message.reasoning is not None:
         data["reasoning_content"] = message.reasoning
@@ -184,6 +235,44 @@ def _message_to_dict(message: Message) -> dict[str, object]:
     if message.tool_call_id is not None:
         data["tool_call_id"] = message.tool_call_id
     return data
+
+
+def _content_to_provider_format(
+    message: Message,
+    *,
+    include_images: bool = True,
+) -> object:
+    parts = message.parts
+    if not parts:
+        return None
+    if all(isinstance(part, TextPart) for part in parts):
+        return "".join(part.text for part in parts)
+    if not include_images:
+        text = "".join(part.text for part in parts if isinstance(part, TextPart))
+        paths = [part.path for part in parts if isinstance(part, ImagePart)]
+        return text + (
+            "\n\nAttached images (use analyze_image if needed):\n"
+            + "\n".join(f"- {path}" for path in paths)
+            if paths
+            else ""
+        )
+    rendered: list[dict[str, object]] = []
+    for part in parts:
+        if isinstance(part, TextPart):
+            rendered.append({"type": "text", "text": part.text})
+        elif isinstance(part, ImagePart):
+            path = part.path
+            with open(path, "rb") as file:
+                encoded = base64.b64encode(file.read()).decode("ascii")
+            rendered.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{part.mime_type};base64,{encoded}"
+                    },
+                }
+            )
+    return rendered
 
 
 def _tool_definition_to_dict(tool: ToolDefinition) -> dict[str, object]:

@@ -5,6 +5,7 @@ from .search_files import SearchFilesTool
 from .shell import ShellTool
 from .web_search import WebSearchTool
 from .subagent import SubagentTool, SubagentRegistry
+from .analyze_image import AnalyzeImageTool
 
 __all__ = [
     "EditFileTool",
@@ -15,4 +16,5 @@ __all__ = [
     "WebSearchTool",
     "SubagentTool",
     "SubagentRegistry",
+    "AnalyzeImageTool",
 ]

@@ -9,6 +9,7 @@ from .context_manager import ContextManager, ContextWindowExceededError
 from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
+from .content import ImagePart
 from .tool_result import ToolResultNormalizer
 from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
 from .workspace import Workspace
@@ -121,6 +122,7 @@ class Agent:
         self,
         user_input: str,
         on_event: Callable[[AgentEvent], None] | None = None,
+        attachments: tuple[ImagePart, ...] = (),
     ) -> AgentRunResult:
         turn_start = len(self._session.items)
         self._context.begin_turn(turn_start)
@@ -133,6 +135,7 @@ class Agent:
             "user",
             user_input,
             timestamp_utc=request_timestamp_utc,
+            attachments=attachments,
         )
 
         while True:

@@ -80,6 +80,12 @@ pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-famil
 .composer:focus-within { border-color: #a7b5d2; box-shadow: 0 0 0 3px #687fab08; }
 .composer textarea { resize: none; width: 100%; min-height: 48px; max-height: 180px; border: 0; outline: none; background: transparent; padding: 0 2px; font-size: 13px; line-height: 1.7; color: #343d4d; }
 .composer textarea::placeholder { color: #a5adba; }
+.attachment-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 7px; }
+.attachment-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 220px; padding: 4px 8px; border: 1px solid #e2e6ee; border-radius: 5px; background: #f7f8fb; color: #7a8496; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-button { display: grid; place-items: center; width: 27px; height: 27px; border: 0; border-radius: 6px; background: transparent; color: #8b96a9; cursor: pointer; }
+.attachment-button:hover { background: #f1f3f7; color: #5d709e; }
+.attachment-button:disabled { opacity: .5; cursor: default; }
+.attachment-input { display: none; }
 .composer-bottom { display: flex; justify-content: space-between; align-items: center; }
 .composer-bottom > span { color: #b1b7c2; font-size: 9px; }
 .model-selector { display: flex; align-items: center; position: relative; min-width: 0; max-width: 55%; color: #74829b; }

@@ -22,7 +22,8 @@ from .execution import (
     CommandExecutor,
     SubprocessCommandExecutor,
 )
-from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage
+from .llm import LLMProvider, LLMRequest, LLMResponse, TokenUsage, ProviderCapabilities
+from .content import Content, ContentPart, TextPart, ImagePart
 from .session import Message, Session
 from .session_store import JsonlSessionStore
 from .tool_result import (
@@ -90,6 +91,11 @@ __all__ = [
     "ShellTool",
     "SubprocessCommandExecutor",
     "TokenUsage",
+    "ProviderCapabilities",
+    "Content",
+    "ContentPart",
+    "TextPart",
+    "ImagePart",
     "Tool",
     "ToolBatchStartedEvent",
     "ToolCall",

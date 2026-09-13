@@ -15,6 +15,8 @@ export type ToolCall = {
   arguments: { readonly [key: string]: JSONValue };
 };
 
+export type ImageAttachment = { type: 'image'; path: string; mime_type: string };
+
 export type ProtocolError = {
   type: string;
   message: string;
@@ -93,7 +95,7 @@ export type Outgoing =
       // Omitted to use the provider selected in the configuration file.
       provider?: string;
     }
-  | { type: 'user_turn'; turn_id: string; text: string }
+  | { type: 'user_turn'; turn_id: string; text: string; attachments?: ImageAttachment[] }
   | { type: 'approval_response'; request_id: string; approved: boolean }
   | { type: 'shutdown' };
 

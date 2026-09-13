@@ -1,6 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import type { Incoming, Usage } from "@nosis/protocol";
-import type { SessionItem } from "./api";
+import { attachmentUrl, type SessionItem } from "./api";
 
 /** A transcript item, plus the streaming state the live turn needs. */
 export type TranscriptItem = SessionItem & { streaming?: boolean };
@@ -182,7 +182,13 @@ function itemParts(item: TranscriptItem, results: Map<string, ToolOutcome>): Par
   const parts: Part[] = [];
   // The model reasons before it answers, so reasoning comes first.
   if (item.reasoning) parts.push({ type: "reasoning", text: item.reasoning });
-  if (item.content) parts.push({ type: "text", text: item.content });
+  if (typeof item.content === "string" && item.content) parts.push({ type: "text", text: item.content });
+  if (Array.isArray(item.content)) {
+    for (const part of item.content) {
+      if (part.type === "text") parts.push({ type: "text", text: part.text });
+      else parts.push({ type: "image", image: attachmentUrl(part.path) } as unknown as Part);
+    }
+  }
   for (const call of item.tool_calls ?? []) {
     parts.push({
       type: "tool-call",
@@ -210,7 +216,7 @@ export function toMessages(items: TranscriptItem[]): ThreadMessageLike[] {
     items
       .filter(
         (item): item is TranscriptItem & { tool_call_id: string; content: string } =>
-          item.role === "tool" && Boolean(item.content),
+        item.role === "tool" && typeof item.content === "string" && Boolean(item.content),
       )
       .map((item) => [item.tool_call_id, JSON.parse(item.content)]),
   );
