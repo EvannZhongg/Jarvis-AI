@@ -14,11 +14,9 @@ class PromptsTest(unittest.TestCase):
 
         self.assertTrue(prompt)
         self.assertIn("I am Nosis", prompt)
-        self.assertIn(
-            f"Current workspace: {{{{{workspace.path}}}}}",
-            prompt,
-        )
+        self.assertIn(f"Current workspace: {workspace.path}", prompt)
         self.assertNotIn("{{workspace}}", prompt)
+        self.assertNotIn(f"{{{{{workspace.path}}}}}", prompt)
 
     def test_loads_subagent_prompt_with_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -26,11 +24,9 @@ class PromptsTest(unittest.TestCase):
             prompt = load_subagent_prompt(workspace)
 
         self.assertTrue(prompt)
-        self.assertIn(
-            f"Current workspace: {{{{{workspace.path}}}}}",
-            prompt,
-        )
+        self.assertIn(f"Current workspace: {workspace.path}", prompt)
         self.assertNotIn("{{workspace}}", prompt)
+        self.assertNotIn(f"{{{{{workspace.path}}}}}", prompt)
 
 
 if __name__ == "__main__":
