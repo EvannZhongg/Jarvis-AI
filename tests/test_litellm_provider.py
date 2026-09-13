@@ -1,12 +1,17 @@
 import unittest
+import base64
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from agent_core import (
+    ImagePart,
     LLMRequest,
     Message,
     TokenUsage,
     ToolCall,
     ToolDefinition,
+    TextPart,
 )
 from agent_core.providers import LiteLLMProvider
 
@@ -38,6 +43,89 @@ USAGE = type(
 
 
 class LiteLLMProviderTest(unittest.TestCase):
+    @patch("agent_core.providers.litellm_provider.get_model_info", return_value={"supports_vision": True})
+    @patch("agent_core.providers.litellm_provider.completion")
+    def test_resolves_relative_image_against_explicit_media_root(
+        self,
+        completion_mock,
+        _model_info_mock,
+    ) -> None:
+        completion_mock.return_value = iter([chunk(content="ok")])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / ".nosis" / "attachments" / "a1.png"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b"image-bytes")
+            provider = LiteLLMProvider(
+                model="vision/test",
+                max_context_tokens=1000,
+                media_root=root,
+            )
+            provider.stream(
+                LLMRequest(
+                    system_prompt="Answer.",
+                    messages=(
+                        Message(
+                            role="user",
+                            content=(
+                                TextPart(text="What is this?"),
+                                ImagePart(path=".nosis/attachments/a1.png"),
+                            ),
+                        ),
+                    ),
+                ),
+                lambda _text: None,
+            )
+
+        sent = completion_mock.call_args.kwargs["messages"][1]["content"]
+        encoded = base64.b64encode(b"image-bytes").decode("ascii")
+        self.assertEqual(
+            sent[1]["image_url"]["url"],
+            f"data:image/png;base64,{encoded}",
+        )
+
+    def test_relative_image_without_media_root_is_rejected(self) -> None:
+        from agent_core.providers.litellm_provider import _content_to_provider_format
+
+        with self.assertRaisesRegex(ValueError, "media_root"):
+            _content_to_provider_format(
+                Message(
+                    role="user",
+                    content=(ImagePart(path=".nosis/attachments/a1.png"),),
+                )
+            )
+
+    @patch("agent_core.providers.litellm_provider.get_model_info", return_value={"supports_vision": True})
+    @patch("agent_core.providers.litellm_provider.completion")
+    def test_missing_image_from_another_workspace_becomes_text_notice(
+        self,
+        completion_mock,
+        _model_info_mock,
+    ) -> None:
+        completion_mock.return_value = iter([chunk(content="ok")])
+        with tempfile.TemporaryDirectory() as directory:
+            provider = LiteLLMProvider(
+                model="vision/test",
+                max_context_tokens=1000,
+                media_root=Path(directory),
+            )
+            provider.stream(
+                LLMRequest(
+                    system_prompt="Answer.",
+                    messages=(
+                        Message(
+                            role="user",
+                            content=(ImagePart(path=".nosis/attachments/from-a.png"),),
+                        ),
+                    ),
+                ),
+                lambda _text: None,
+            )
+
+        sent = completion_mock.call_args.kwargs["messages"][1]["content"]
+        self.assertEqual(sent[0]["type"], "text")
+        self.assertIn("unavailable", sent[0]["text"])
+
     @patch("agent_core.providers.litellm_provider.token_counter")
     @patch("agent_core.providers.litellm_provider.completion")
     def test_passes_configured_model_url_key_and_output_limit(

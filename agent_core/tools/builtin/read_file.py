@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import TextIO
 
 from ..base import JSONValue, Tool, ToolDefinition
+from ...session_paths import default_sessions_directory
 from ...workspace import Workspace
 
 
@@ -13,8 +15,18 @@ TRUNCATED_LINE_NOTICE = " …（该行被截断）"
 
 
 class ReadFileTool(Tool):
-    def __init__(self, workspace: Workspace) -> None:
+    def __init__(
+        self,
+        workspace: Workspace,
+        *,
+        sessions_directory: Path | None = None,
+    ) -> None:
         self._workspace = workspace
+        self._sessions_directory = (
+            sessions_directory.expanduser().resolve()
+            if sessions_directory is not None
+            else default_sessions_directory().resolve()
+        )
 
     @property
     def definition(self) -> ToolDefinition:
@@ -53,7 +65,7 @@ class ReadFileTool(Tool):
 
     def execute(self, arguments: dict[str, JSONValue]) -> JSONValue:
         path, offset, limit = _parse_arguments(arguments)
-        file_path = self._workspace.resolve_path(path)
+        file_path, display_path = self._resolve_path(path)
         file_size_bytes = file_path.stat().st_size
         if file_size_bytes > MAX_FILE_SIZE_BYTES:
             raise ValueError(
@@ -76,10 +88,28 @@ class ReadFileTool(Tool):
             ) from error
 
         return {
-            "path": file_path.relative_to(self._workspace.path).as_posix(),
+            "path": display_path,
             "file_size_bytes": file_size_bytes,
             "content": content,
         }
+
+    def _resolve_path(self, path: str) -> tuple[Path, str]:
+        marker = Path(".nosis", "sessions")
+        relative = Path(path)
+        if self._sessions_directory is not None and (
+            relative == marker or marker in relative.parents
+        ):
+            suffix = relative.relative_to(marker)
+            resolved = (self._sessions_directory / suffix).resolve()
+            try:
+                resolved.relative_to(self._sessions_directory)
+            except ValueError as error:
+                raise ValueError(
+                    "session artifact path must stay within sessions"
+                ) from error
+            return resolved, relative.as_posix()
+        resolved = self._workspace.resolve_path(path)
+        return resolved, resolved.relative_to(self._workspace.path).as_posix()
 
 
 def _parse_arguments(

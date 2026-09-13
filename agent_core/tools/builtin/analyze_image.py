@@ -51,6 +51,7 @@ class AnalyzeImageTool(Tool):
                         ),
                     ),
                 ),
+                media_root=self._workspace.path,
             ),
             lambda _text: None,
         )

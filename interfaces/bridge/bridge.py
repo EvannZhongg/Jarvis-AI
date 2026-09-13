@@ -119,8 +119,8 @@ class Bridge:
         )
 
     def start(self, message: dict[str, object]) -> None:
-        config_path = Path(str(message["provider_config_path"]))
-        agent_config_path = Path(str(message["agent_config_path"]))
+        config_path = Path(str(message["provider_config_path"])).expanduser().resolve()
+        agent_config_path = Path(str(message["agent_config_path"])).expanduser().resolve()
         load_dotenv(config_path.parent / ".env")
 
         workspace = Workspace(Path(str(message["workspace"])))
@@ -133,7 +133,8 @@ class Bridge:
         agent_config = load_agent_config(agent_config_path)
 
         session_id = message.get("session_id")
-        self._store = JsonlSessionStore(workspace.path / "sessions")
+        sessions_directory = config_path.parent / "sessions"
+        self._store = JsonlSessionStore(sessions_directory)
         resumed = isinstance(session_id, str) and bool(session_id)
         self._session = (
             self._store.load(str(session_id)) if resumed else Session()
@@ -152,6 +153,7 @@ class Bridge:
                 workspace,
                 SubprocessCommandExecutor(workspace.path),
                 shell_timeout_seconds=agent_config.shell_timeout_seconds,
+                sessions_directory=sessions_directory,
             )
             subagent_registry.register(
                 SubagentTool(
@@ -160,11 +162,13 @@ class Bridge:
                         base_url=subagent_provider_config.url,
                         api_key=subagent_provider_config.key,
                         max_context_tokens=subagent_provider_config.max_context_tokens,
+                        media_root=workspace.path,
                     ),
                     config=agent_config,
                     workspace=workspace,
                     tools=child_tools,
                     parent_session_id=self._session.session_id,
+                    sessions_directory=sessions_directory,
                     tool_policy=ShellApprovalPolicy(self.request_permission),
                 )
             )
@@ -173,6 +177,7 @@ class Bridge:
             base_url=config.url,
             api_key=config.key,
             max_context_tokens=config.max_context_tokens,
+            media_root=workspace.path,
         )
         main_provider_name = (
             provider
@@ -190,6 +195,7 @@ class Bridge:
                 base_url=vision_config.url,
                 api_key=vision_config.key,
                 max_context_tokens=vision_config.max_context_tokens,
+                media_root=workspace.path,
             )
             if vision_config is not None
             else None
@@ -201,6 +207,7 @@ class Bridge:
             shell_timeout_seconds=agent_config.shell_timeout_seconds,
             subagent_registry=subagent_registry,
             vision_provider=vision_provider,
+            sessions_directory=sessions_directory,
         )
         self._mcp = McpClientManager(
             agent_config.mcp,
@@ -222,6 +229,7 @@ class Bridge:
                     self._mcp.approval_servers,
                 ),
             ),
+            sessions_directory=sessions_directory,
         )
 
         self.emit(

@@ -28,6 +28,8 @@ from agent_core import (
     ToolResultEvent,
     ToolResultNormalizer,
     Workspace,
+    ImagePart,
+    TextPart,
 )
 
 REQUEST_TIME = datetime(2026, 9, 9, 8, 0, tzinfo=timezone.utc)
@@ -487,6 +489,51 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("assistant step", historical_timeline)
         self.assertNotIn("tool result", historical_timeline)
 
+    def test_historical_image_is_not_carried_into_next_request(self) -> None:
+        session = Session(session_id="images")
+        session.add_item(
+            "user",
+            "look at this",
+            attachments=(ImagePart(path=".nosis/attachments/a1.png"),),
+        )
+        provider = MockProvider(["ok"])
+        agent = Agent(
+            provider=provider,
+            session=session,
+            system_prompt="Be helpful.",
+            config=AGENT_CONFIG,
+            workspace=TEST_WORKSPACE,
+        )
+        agent.run("follow up")
+
+        self.assertEqual(provider.requests[0].media_root, TEST_WORKSPACE.path)
+        historical = provider.requests[0].messages[1]
+        self.assertEqual(historical.role, "user")
+        self.assertEqual(historical.content, "look at this\n[Image attachment omitted from historical context]")
+        self.assertEqual(historical.parts, (TextPart(text=historical.content),))
+
+    def test_context_archive_does_not_send_image_parts(self) -> None:
+        session = Session(session_id="archive-images")
+        session.add_item(
+            "user",
+            "summarize this",
+            attachments=(ImagePart(path=".nosis/attachments/a1.png"),),
+        )
+        provider = MockProvider(["summary"])
+        context = ContextManager(
+            provider=provider,
+            session=session,
+            system_prompt="Be helpful.",
+            config=AGENT_CONFIG,
+        )
+        context.begin_turn(len(session.items))
+        context.archive()
+
+        archived = provider.requests[0].messages
+        self.assertTrue(all(not message.parts or all(
+            isinstance(part, TextPart) for part in message.parts
+        ) for message in archived))
+
     def test_context_archive_keeps_tools_without_intermediate_timestamps(
         self,
     ) -> None:
@@ -645,6 +692,7 @@ class AgentTest(unittest.TestCase):
                     session.session_id,
                     max_chars=20,
                     preview_chars=12,
+                    sessions_directory=workspace.path / ".nosis" / "sessions",
                 ),
             )
             events = []
@@ -653,7 +701,7 @@ class AgentTest(unittest.TestCase):
 
             tool_message = provider.requests[1].messages[-1]
             feedback = json.loads(tool_message.content)
-            artifact_path = "sessions/session-1/call-1.txt"
+            artifact_path = ".nosis/sessions/session-1/call-1.txt"
             self.assertEqual(feedback["artifact_path"], artifact_path)
             self.assertEqual(
                 feedback["read_instruction"],

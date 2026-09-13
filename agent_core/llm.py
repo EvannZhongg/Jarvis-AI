@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from .session import Message
@@ -12,6 +13,9 @@ class LLMRequest:
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...] = ()
     max_output_tokens: int | None = None
+    # Runtime-only root used to resolve relative media paths. It is not
+    # persisted in session logs or sent to the provider API.
+    media_root: Path | None = None
 
 
 @dataclass(frozen=True)

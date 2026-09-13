@@ -85,7 +85,7 @@ class GuiTest(unittest.TestCase):
         (self.root / "src").mkdir()
         self.provider_config_path = self.root / "provider_config.json"
         self.agent_config_path = self.root / "agent_config.json"
-        self.store = JsonlSessionStore(self.root / "sessions")
+        self.store = JsonlSessionStore(self.root / ".nosis" / "sessions")
 
     def client(self, bridge: FakeBridge | None = None) -> TestClient:
         app = server.create_app(

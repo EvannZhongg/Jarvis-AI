@@ -162,6 +162,9 @@ EXA_API_KEY=your-api-key
 
 GUI 支持上传图片。图片会保存为工作区下的 `.nosis/attachments/<id>.<ext>`，Session
 只记录路径和 MIME 类型；只有 Provider 发起请求时才会读取并转换成 API 所需格式。
+Runtime 会把工作区根目录放入每次 `LLMRequest` 的媒体解析上下文，因此解析不依赖
+进程当前目录；直接调用 Provider 时，应在 `LLMRequest(media_root=workspace.path)`
+中提供对应工作区根目录。
 
 ## GUI
 
@@ -195,7 +198,7 @@ GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
 ## 会话与工具
 
 每轮成功对话都会把本轮新增的 Session Items、发送给模型的完整消息上下文和模型
-响应追加到 Workspace 下的 `sessions/<SESSION_ID>/<SESSION_ID>.jsonl`，每行一个
+响应追加到全局配置目录 `~/.nosis/sessions/<SESSION_ID>/<SESSION_ID>.jsonl`，每行一个
 JSON 对象；超过回灌上限的完整 Tool Result 保存在同一目录的
 `<TOOL_CALL_ID>.txt`。用 `nosis --session SESSION_ID` 恢复历史对话。
 

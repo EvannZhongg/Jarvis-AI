@@ -6,8 +6,7 @@ build/
 .venv/
 .env
 /provider_config.json
-/sessions.jsonl
-/sessions/
+/.nosis/attachments/
 node_modules/
 interfaces/tui/dist/
 interfaces/gui/static/

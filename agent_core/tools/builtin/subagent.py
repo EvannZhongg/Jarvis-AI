@@ -11,6 +11,7 @@ from ...prompts import load_subagent_prompt
 from ...session import Session
 from ...session_store import JsonlSessionStore
 from ...session_paths import session_directory
+from ...session_paths import default_sessions_directory
 from ...workspace import Workspace
 from ..base import JSONValue, Tool, ToolDefinition
 from ..base import ToolPolicy
@@ -50,7 +51,7 @@ class SubagentTool(Tool):
                     "parent_session_id is required when sessions_directory is not provided"
                 )
             sessions_directory = (
-                session_directory(workspace.path / "sessions", parent_session_id)
+                session_directory(default_sessions_directory(), parent_session_id)
                 / "subagents"
             )
         self._store = JsonlSessionStore(sessions_directory)
@@ -96,6 +97,7 @@ class SubagentTool(Tool):
             workspace=self._workspace,
             tools=self._tools,
             tool_policy=self._tool_policy,
+            sessions_directory=self._store.directory,
         )
         result = child.run(task.strip())
         context_fields = {}

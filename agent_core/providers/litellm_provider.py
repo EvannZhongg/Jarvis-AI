@@ -1,6 +1,7 @@
 import base64
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from litellm import completion, get_model_info, token_counter
@@ -24,10 +25,12 @@ class LiteLLMProvider(LLMProvider):
         base_url: str | None = None,
         api_key: str | None = None,
         max_context_tokens: int | None = None,
+        media_root: Path | None = None,
     ) -> None:
         self._model = model
         self._base_url = base_url
         self._api_key = api_key
+        self._media_root = media_root.expanduser().resolve() if media_root is not None else None
         if max_context_tokens is not None:
             if (
                 isinstance(max_context_tokens, bool)
@@ -169,6 +172,15 @@ def _request_messages(
                     provider is None
                     or "image" in provider.capabilities.input_modalities
                 ),
+                media_root=(
+                    request.media_root
+                    if request.media_root is not None
+                    else (
+                        getattr(provider, "_media_root", None)
+                        if provider is not None
+                        else None
+                    )
+                ),
             )
             for message in request.messages
         ],
@@ -210,10 +222,15 @@ def _message_to_dict(
     message: Message,
     *,
     include_images: bool = True,
+    media_root: Path | None = None,
 ) -> dict[str, object]:
     data: dict[str, object] = {
         "role": message.role,
-        "content": _content_to_provider_format(message, include_images=include_images),
+        "content": _content_to_provider_format(
+            message,
+            include_images=include_images,
+            media_root=media_root,
+        ),
     }
     if message.reasoning is not None:
         data["reasoning_content"] = message.reasoning
@@ -241,6 +258,7 @@ def _content_to_provider_format(
     message: Message,
     *,
     include_images: bool = True,
+    media_root: Path | None = None,
 ) -> object:
     parts = message.parts
     if not parts:
@@ -261,8 +279,20 @@ def _content_to_provider_format(
         if isinstance(part, TextPart):
             rendered.append({"type": "text", "text": part.text})
         elif isinstance(part, ImagePart):
-            path = part.path
-            with open(path, "rb") as file:
+            try:
+                path = _resolve_media_path(part.path, media_root)
+            except FileNotFoundError:
+                rendered.append(
+                    {
+                        "type": "text",
+                        "text": (
+                            "[Image attachment unavailable in this workspace: "
+                            f"{part.path}]"
+                        ),
+                    }
+                )
+                continue
+            with path.open("rb") as file:
                 encoded = base64.b64encode(file.read()).decode("ascii")
             rendered.append(
                 {
@@ -273,6 +303,26 @@ def _content_to_provider_format(
                 }
             )
     return rendered
+
+
+def _resolve_media_path(path: str, media_root: Path | None) -> Path:
+    candidate = Path(path)
+    was_relative = not candidate.is_absolute()
+    if was_relative:
+        if media_root is None:
+            raise ValueError(
+                "relative image paths require a provider media_root"
+            )
+        candidate = media_root / candidate
+    resolved = candidate.expanduser().resolve()
+    if was_relative and media_root is not None:
+        try:
+            resolved.relative_to(media_root)
+        except ValueError as error:
+            raise ValueError("image path must stay within media_root") from error
+    if not resolved.is_file():
+        raise FileNotFoundError(f"image attachment does not exist: {path}")
+    return resolved
 
 
 def _tool_definition_to_dict(tool: ToolDefinition) -> dict[str, object]:

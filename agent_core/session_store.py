@@ -5,13 +5,21 @@ from pathlib import Path
 from .llm import LLMRequest, LLMResponse
 from .session import Message, Session
 from .content import ImagePart, TextPart
-from .session_paths import session_log_path
+from .session_paths import default_sessions_directory, session_log_path
 from .tools import ToolCall
 
 
 class JsonlSessionStore:
-    def __init__(self, directory: Path) -> None:
-        self._directory = directory
+    def __init__(self, directory: Path | None = None) -> None:
+        self._directory = (
+            directory.expanduser().resolve()
+            if directory is not None
+            else default_sessions_directory()
+        )
+
+    @property
+    def directory(self) -> Path:
+        return self._directory
 
     def list_sessions(self) -> list[dict[str, str]]:
         """Summarize stored sessions, most recently updated first."""

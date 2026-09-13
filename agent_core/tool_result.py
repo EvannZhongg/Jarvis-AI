@@ -3,6 +3,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .session_paths import session_directory
+from .session_paths import default_sessions_directory
 from .tools import ToolResult
 from .workspace import Workspace
 
@@ -18,6 +19,7 @@ class ToolResultNormalizer:
         session_id: str,
         max_chars: int = DEFAULT_MAX_TOOL_RESULT_CHARS,
         preview_chars: int = DEFAULT_TOOL_RESULT_PREVIEW_CHARS,
+        sessions_directory: Path | None = None,
     ) -> None:
         if max_chars < 1:
             raise ValueError("max_chars must be a positive integer")
@@ -28,8 +30,11 @@ class ToolResultNormalizer:
         self._session_id = session_id
         self._max_chars = max_chars
         self._preview_chars = preview_chars
+        self._sessions_directory = (
+            sessions_directory or default_sessions_directory()
+        ).expanduser().resolve()
         session_directory(
-            self._workspace.path / "sessions",
+            self._sessions_directory,
             self._session_id,
         )
 
@@ -40,13 +45,16 @@ class ToolResultNormalizer:
             return content
 
         artifact_path = (
-            Path("sessions")
+            Path(".nosis", "sessions")
             / self._session_id
             / f"{quote(result.tool_call_id, safe='')}.txt"
         )
-        absolute_path = self._workspace.resolve_path(
-            artifact_path.as_posix()
-        )
+        absolute_path = self._sessions_directory / self._session_id / artifact_path.name
+        absolute_path = absolute_path.resolve()
+        try:
+            absolute_path.relative_to(self._sessions_directory)
+        except ValueError as error:
+            raise ValueError("session artifact path must stay within sessions") from error
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
         absolute_path.write_text(content, encoding="utf-8")
 

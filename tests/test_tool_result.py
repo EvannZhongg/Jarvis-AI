@@ -24,12 +24,13 @@ class ToolResultNormalizerTest(unittest.TestCase):
                 "session-1",
                 max_chars=1000,
                 preview_chars=20,
+                sessions_directory=workspace.path / ".nosis" / "sessions",
             )
 
             normalized = normalizer.normalize(result)
 
             self.assertEqual(normalized, result.to_content())
-            self.assertFalse((workspace.path / "sessions").exists())
+            self.assertFalse((workspace.path / ".nosis" / "sessions").exists())
 
     def test_writes_large_result_and_returns_artifact_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -44,11 +45,12 @@ class ToolResultNormalizerTest(unittest.TestCase):
                 "session-1",
                 max_chars=20,
                 preview_chars=12,
+                sessions_directory=workspace.path / ".nosis" / "sessions",
             )
 
             normalized = normalizer.normalize(result)
 
-            artifact_path = "sessions/session-1/call%2F1.txt"
+            artifact_path = ".nosis/sessions/session-1/call%2F1.txt"
             self.assertEqual(
                 (workspace.path / artifact_path).read_text(
                     encoding="utf-8"

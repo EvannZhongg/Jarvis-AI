@@ -22,11 +22,12 @@ def create_builtin_tools(
     shell_timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
     subagent_registry: SubagentRegistry | None = None,
     vision_provider: LLMProvider | None = None,
+    sessions_directory=None,
 ) -> tuple[Tool, ...]:
     tools: list[Tool] = []
 
     if config.is_enabled("read_file"):
-        tools.append(ReadFileTool(workspace))
+        tools.append(ReadFileTool(workspace, sessions_directory=sessions_directory))
     if config.is_enabled("edit_file"):
         tools.append(EditFileTool(workspace))
     if config.is_enabled("search_files"):

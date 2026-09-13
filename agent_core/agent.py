@@ -10,6 +10,7 @@ from .llm import LLMProvider, LLMRequest
 from .llm import LLMResponse
 from .session import Message, Session
 from .content import ImagePart
+from .session_paths import default_sessions_directory
 from .tool_result import ToolResultNormalizer
 from .tools import Tool, ToolCall, ToolPolicy, ToolRegistry, ToolResult
 from .workspace import Workspace
@@ -101,6 +102,7 @@ class Agent:
         tools: Iterable[Tool] = (),
         tool_policy: ToolPolicy | None = None,
         tool_result_normalizer: ToolResultNormalizer | None = None,
+        sessions_directory=None,
     ) -> None:
         self._provider = provider
         self._session = session
@@ -109,13 +111,20 @@ class Agent:
         self._tools = ToolRegistry(tools, policy=tool_policy)
         self._tool_result_normalizer = (
             tool_result_normalizer
-            or ToolResultNormalizer(workspace, session.session_id)
+            or ToolResultNormalizer(
+                workspace,
+                session.session_id,
+                sessions_directory=(
+                    sessions_directory or default_sessions_directory()
+                ),
+            )
         )
         self._context = ContextManager(
             provider=provider,
             session=session,
             system_prompt=system_prompt,
             config=config,
+            media_root=workspace.path,
         )
 
     def run(

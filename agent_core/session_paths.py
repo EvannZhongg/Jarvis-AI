@@ -1,6 +1,11 @@
 from pathlib import Path
 
 
+def default_sessions_directory() -> Path:
+    """Return the user-wide Session root used by library callers."""
+    return Path.home() / ".nosis" / "sessions"
+
+
 def session_directory(
     sessions_directory: Path,
     session_id: str,

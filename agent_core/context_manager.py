@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from .config import AgentConfig
+from .content import historical_content
 from .llm import LLMProvider, LLMRequest
 from .prompts import load_consolidator_prompt
 from .session import Message, Session
@@ -44,12 +46,14 @@ class ContextManager:
         session: Session,
         system_prompt: str,
         config: AgentConfig,
+        media_root: Path | None = None,
     ) -> None:
         self._provider = provider
         self._session = session
         self._system_prompt = system_prompt
         self._max_output_tokens = config.max_output_tokens
         self._turn_start: int | None = None
+        self._media_root = media_root
 
         if self._max_output_tokens >= provider.max_context_tokens:
             raise ValueError(
@@ -107,6 +111,7 @@ class ContextManager:
             messages=tuple(self._context_messages()),
             tools=tuple(tools),
             max_output_tokens=self._max_output_tokens,
+            media_root=self._media_root,
         )
 
     def should_archive(self, input_tokens: int) -> bool:
@@ -134,6 +139,7 @@ class ContextManager:
             system_prompt=system_prompt,
             messages=tuple([_timeline_message(historical_items), *historical_items]),
             max_output_tokens=self._max_output_tokens,
+            media_root=self._media_root,
         )
         response = self._provider.stream(request, lambda _text: None, None)
         summary = response.content.strip() if response.content else ""
@@ -191,7 +197,7 @@ def _historical_message(item: Message) -> Message:
         timestamp_utc = None
     return Message(
         role=item.role,
-        content=item.content,
+        content=historical_content(item.content),
         timestamp_utc=timestamp_utc,
         tool_calls=item.tool_calls,
         tool_call_id=item.tool_call_id,

@@ -370,7 +370,7 @@ def main(argv: list[str] | None = None) -> None:
         default_model, models = load_model_options(args.config)
         app = create_app(
             workspace,
-            JsonlSessionStore(workspace.path / "sessions"),
+            JsonlSessionStore(args.config.expanduser().resolve().parent / "sessions"),
             args.config,
             args.agent_config,
             models=models,
