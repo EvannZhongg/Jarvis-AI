@@ -46,12 +46,17 @@ class SubagentTool(Tool):
         self._tools = tuple(tools)
         self._system_prompt = system_prompt
         if sessions_directory is None:
-            if not parent_session_id:
-                raise ValueError(
-                    "parent_session_id is required when sessions_directory is not provided"
-                )
+            sessions_directory = default_sessions_directory()
+        sessions_root = sessions_directory.expanduser().resolve()
+        # Keep artifacts addressable from the shared Session root; only the
+        # child transcript is nested under its parent's ``subagents`` folder.
+        self._artifact_sessions_directory = sessions_root
+        if parent_session_id:
             sessions_directory = (
-                session_directory(default_sessions_directory(), parent_session_id)
+                session_directory(
+                    sessions_root,
+                    parent_session_id,
+                )
                 / "subagents"
             )
         self._store = JsonlSessionStore(sessions_directory)
@@ -97,7 +102,7 @@ class SubagentTool(Tool):
             workspace=self._workspace,
             tools=self._tools,
             tool_policy=self._tool_policy,
-            sessions_directory=self._store.directory,
+            sessions_directory=self._artifact_sessions_directory,
         )
         result = child.run(task.strip())
         context_fields = {}
