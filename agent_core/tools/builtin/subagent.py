@@ -24,8 +24,8 @@ class SubagentTool(Tool):
 
     A fresh :class:`Session` is created for every invocation.  The complete
     child transcript is persisted under the parent session's ``subagents``
-    directory while the
-    parent receives a plain string containing the final assistant response.
+    directory, while the parent receives a plain string containing the final
+    assistant response.
     """
 
     def __init__(
