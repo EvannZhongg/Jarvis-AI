@@ -132,6 +132,11 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
       sessionId: session.session_id,
       provider: model,
       onMessage: (message) => {
+        // A socket that was replaced during a model switch may still have
+        // messages queued in the browser event loop. Ignore those messages
+        // so stale transcript, notice, usage, and turn callbacks cannot
+        // mutate the active connection's state.
+        if (socketRef.current !== socket) return;
         if (message.type === "ready") {
           if (noticeTimeoutRef.current) {
             clearTimeout(noticeTimeoutRef.current);
