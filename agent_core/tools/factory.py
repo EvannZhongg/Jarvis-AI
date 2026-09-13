@@ -49,6 +49,3 @@ def create_builtin_tools(
         tools.extend(subagent_registry.tools)
 
     return tuple(tools)
-
-
-create_tools = create_builtin_tools

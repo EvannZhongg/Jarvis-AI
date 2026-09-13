@@ -2,7 +2,7 @@ import type { ToolCall } from "@nosis/protocol";
 
 export type SessionItem = {
   role: "user" | "assistant" | "tool";
-  // Text for legacy display and structured content parts for multimodal turns.
+  // Text or structured content parts for multimodal turns.
   content: any;
   timestamp_utc?: string;
   tool_calls?: ToolCall[];

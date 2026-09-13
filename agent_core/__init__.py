@@ -53,7 +53,6 @@ from .tools import (
     SubagentTool,
     SubagentRegistry,
     create_builtin_tools,
-    create_tools,
     load_tool_config,
 )
 from .mcp import McpConfig, McpServerConfig, McpTool, load_mcp_config
@@ -113,7 +112,6 @@ __all__ = [
     "SubagentTool",
     "SubagentRegistry",
     "Workspace",
-    "create_tools",
     "create_builtin_tools",
     "McpConfig",
     "McpServerConfig",

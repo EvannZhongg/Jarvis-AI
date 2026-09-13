@@ -20,7 +20,7 @@ from .builtin import (
     AnalyzeImageTool,
 )
 from .config import ToolConfig, load_tool_config
-from .factory import create_builtin_tools, create_tools
+from .factory import create_builtin_tools
 from .policy import CompositeToolPolicy, McpApprovalPolicy, ShellApprovalPolicy
 
 __all__ = [
@@ -44,7 +44,6 @@ __all__ = [
     "WebSearchTool",
     "SubagentTool",
     "SubagentRegistry",
-    "create_tools",
     "create_builtin_tools",
     "load_tool_config",
 ]

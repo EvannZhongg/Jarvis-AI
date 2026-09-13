@@ -24,7 +24,7 @@ from agent_core import (
     WebSearchTool,
     Workspace,
     SubagentRegistry,
-    create_tools,
+    create_builtin_tools,
 )
 from agent_core.tools.builtin.search_files import MAX_OUTPUT_CHARS
 from agent_core.tools.builtin.read_file import (
@@ -135,7 +135,7 @@ class ToolFactoryTest(unittest.TestCase):
                 raise AssertionError("executor should not be called")
 
         with tempfile.TemporaryDirectory() as directory:
-            tools = create_tools(
+            tools = create_builtin_tools(
                 ToolConfig(
                     enabled=frozenset(
                         {
@@ -159,7 +159,7 @@ class ToolFactoryTest(unittest.TestCase):
                 raise AssertionError("executor should not be called")
 
         with tempfile.TemporaryDirectory() as directory:
-            tools = create_tools(
+            tools = create_builtin_tools(
                 ToolConfig(enabled=frozenset({"web_search"})),
                 Workspace(Path(directory)),
                 UnusedExecutor(),
@@ -188,7 +188,7 @@ class ToolFactoryTest(unittest.TestCase):
                 raise AssertionError("executor should not be called")
 
         with tempfile.TemporaryDirectory() as directory:
-            tools = create_tools(
+            tools = create_builtin_tools(
                 ToolConfig(enabled=frozenset({"subagent"})),
                 Workspace(Path(directory)),
                 UnusedExecutor(),
@@ -218,7 +218,7 @@ class ToolFactoryTest(unittest.TestCase):
                 raise AssertionError("executor should not be called")
 
         with tempfile.TemporaryDirectory() as directory:
-            tools = create_tools(
+            tools = create_builtin_tools(
                 ToolConfig(enabled=frozenset()),
                 Workspace(Path(directory)),
                 UnusedExecutor(),

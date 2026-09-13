@@ -14,13 +14,12 @@ from interfaces.bridge.config import (
 
 
 class ConfigTest(unittest.TestCase):
-    def test_rejects_legacy_top_level_provider_field(self) -> None:
+    def test_requires_main_agent_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "first",
                         "providers": {"first": {"model": "openai/first"}},
                     }
                 ),
