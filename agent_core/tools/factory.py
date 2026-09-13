@@ -17,6 +17,7 @@ def create_builtin_tools(
     workspace: Workspace,
     command_executor: CommandExecutor,
     shell_timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    subagent_tool: Tool | None = None,
 ) -> tuple[Tool, ...]:
     tools: list[Tool] = []
 
@@ -37,6 +38,8 @@ def create_builtin_tools(
         )
     if config.is_enabled("web_search"):
         tools.append(WebSearchTool())
+    if config.is_enabled("subagent") and subagent_tool is not None:
+        tools.append(subagent_tool)
 
     return tuple(tools)
 

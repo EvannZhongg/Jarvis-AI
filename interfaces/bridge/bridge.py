@@ -23,6 +23,7 @@ from agent_core import (
     SubprocessCommandExecutor,
     Workspace,
     create_builtin_tools,
+    SubagentTool,
     load_agent_config,
 )
 from agent_core.prompts import load_system_prompt
@@ -140,6 +141,33 @@ class Bridge:
             SubprocessCommandExecutor(workspace.path),
             shell_timeout_seconds=agent_config.shell_timeout_seconds,
         )
+        if agent_config.tools.is_enabled("subagent"):
+            # Sub-agents run with an isolated session and their own tool config.
+            subagent_provider_config = load_config(
+                config_path,
+                provider if isinstance(provider, str) and provider else None,
+                subagent=True,
+            )
+            child_tools = create_builtin_tools(
+                agent_config.subagent_tools,
+                workspace,
+                SubprocessCommandExecutor(workspace.path),
+                shell_timeout_seconds=agent_config.shell_timeout_seconds,
+            )
+            subagent_tool = SubagentTool(
+                provider=LiteLLMProvider(
+                    model=subagent_provider_config.model,
+                    base_url=subagent_provider_config.url,
+                    api_key=subagent_provider_config.key,
+                    max_context_tokens=subagent_provider_config.max_context_tokens,
+                ),
+                config=agent_config,
+                workspace=workspace,
+                tools=child_tools,
+                parent_session_id=self._session.session_id,
+                tool_policy=ShellApprovalPolicy(self.request_permission),
+            )
+            builtin_tools = (*builtin_tools, subagent_tool)
         self._mcp = McpClientManager(
             agent_config.mcp,
             workspace.path,

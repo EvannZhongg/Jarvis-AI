@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Iterable, TypeAlias
@@ -218,19 +219,20 @@ class Agent:
                         )
                     )
                 tool_count = len(response.tool_calls)
-                for tool_index, tool_call in enumerate(
-                    response.tool_calls,
-                    start=1,
-                ):
+                def execute_call(item: tuple[int, ToolCall]):
+                    index, call = item
                     if on_event is not None:
-                        on_event(
-                            ToolCallEvent(
-                                tool_call=tool_call,
-                                tool_index=tool_index,
-                                tool_count=tool_count,
-                            )
-                        )
-                    tool_result = self._tools.execute(tool_call)
+                        on_event(ToolCallEvent(tool_call=call, tool_index=index, tool_count=tool_count))
+                    result = self._tools.execute(call)
+                    return index, call, result
+
+                indexed_calls = list(enumerate(response.tool_calls, start=1))
+                if len(indexed_calls) > 1 and all(call.name == "subagent" for _, call in indexed_calls):
+                    with ThreadPoolExecutor(max_workers=len(indexed_calls)) as executor:
+                        executed = list(executor.map(execute_call, indexed_calls))
+                else:
+                    executed = [execute_call(item) for item in indexed_calls]
+                for tool_index, tool_call, tool_result in executed:
                     normalized_content = (
                         self._tool_result_normalizer.normalize(tool_result)
                     )

@@ -14,11 +14,51 @@ from interfaces.bridge.config import (
 
 
 class ConfigTest(unittest.TestCase):
+    def test_rejects_legacy_top_level_provider_field(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "provider": "first",
+                        "providers": {"first": {"model": "openai/first"}},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "main_agent"):
+                load_config(path)
+
+    def test_empty_subagent_provider_reuses_selected_main_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "main_agent": {"provider": "first"},
+                        "subagent": {"provider": ""},
+                        "providers": {
+                            "first": {"model": "openai/first"},
+                            "second": {"model": "openai/second"},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(load_config(path, provider="second").model, "openai/second")
+            self.assertEqual(
+                load_config(path, provider="second", subagent=True).model,
+                "openai/second",
+            )
+
     def test_lists_models_without_resolving_keys_and_loads_explicit_selection(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             content = json.dumps({
-                "provider": "first",
+                "main_agent": {"provider": "first"},
+                "subagent": {"provider": ""},
                 "providers": {
                     "first": {"model": "openai/first", "key": "${FIRST_KEY}"},
                     "second": {"model": "openai/second", "key": "${SECOND_KEY}"},
@@ -62,7 +102,11 @@ class ConfigTest(unittest.TestCase):
             )
             provider_config = json.loads(created[0].read_text(encoding="utf-8"))
             agent_config = json.loads(created[1].read_text(encoding="utf-8"))
-            self.assertEqual(provider_config["provider"], "openai")
+            self.assertEqual(
+                provider_config["main_agent"]["provider"],
+                "openai",
+            )
+            self.assertEqual(provider_config["subagent"]["provider"], "")
             self.assertIn("openai", provider_config["providers"])
             self.assertEqual(agent_config["max_same_tool_calls"], 5)
             self.assertEqual(agent_config["shell_timeout_seconds"], 60)
@@ -92,7 +136,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "deepseek",
+                        "main_agent": {"provider": "deepseek"},
                         "providers": {
                             "openai": {
                                 "model": "openai/test-model",
@@ -130,7 +174,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": " test ",
+                        "main_agent": {"provider": " test "},
                         "providers": {
                             "test": {
                                 "model": " openai/test-model ",
@@ -159,7 +203,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "local",
+                        "main_agent": {"provider": "local"},
                         "providers": {
                             "local": {
                                 "model": "openai/local-model",
@@ -188,7 +232,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "test",
+                        "main_agent": {"provider": "test"},
                         "providers": {
                             "test": {
                                 "model": "openai/test-model",
@@ -216,7 +260,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "test",
+                        "main_agent": {"provider": "test"},
                         "providers": {
                             "test": {
                                 "model": "openai/test-model",
@@ -237,7 +281,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "missing",
+                        "main_agent": {"provider": "missing"},
                         "providers": {},
                     }
                 ),
@@ -253,7 +297,7 @@ class ConfigTest(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        "provider": "test",
+                        "main_agent": {"provider": "test"},
                         "providers": {
                             "test": {
                                 "model": "test/model",

@@ -114,12 +114,14 @@ HTTP Server 使用 `transport: "streamable_http"` 和 `url`，请求头中的
 | `shell_timeout_seconds` | shell 默认超时，默认 60 秒、上限 900 秒；单次调用可用 `timeout_seconds` 指定更短值 |
 | `tools` | 内置 Tool 开关：显式写 `true` 才启用，未写出的 Tool 保持关闭；未知名称或非布尔值会导致启动失败 |
 
-`provider_config.json` 顶部用 `provider` 选择当前服务商，`providers` 里为每个
-服务商配置 LiteLLM 模型名、API URL 和密钥：
+`provider_config.json` 中用 `main_agent.provider` 选择主 Agent 服务商，`providers` 里为每个
+服务商配置 LiteLLM 模型名、API URL 和密钥。`subagent.provider` 可单独指定子 Agent
+服务商；留空字符串表示复用主 Agent：
 
 ```json
 {
-  "provider": "deepseek",
+  "main_agent": {"provider": "deepseek"},
+  "subagent": {"provider": ""},
   "providers": {
     "deepseek": {
       "model": "deepseek/deepseek-chat",

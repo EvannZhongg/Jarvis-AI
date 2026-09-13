@@ -15,6 +15,8 @@ from .builtin import (
     SearchFilesTool,
     ShellTool,
     WebSearchTool,
+    SubagentTool,
+    SubagentRegistry,
 )
 from .config import ToolConfig, load_tool_config
 from .factory import create_builtin_tools, create_tools
@@ -39,6 +41,8 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "WebSearchTool",
+    "SubagentTool",
+    "SubagentRegistry",
     "create_tools",
     "create_builtin_tools",
     "load_tool_config",

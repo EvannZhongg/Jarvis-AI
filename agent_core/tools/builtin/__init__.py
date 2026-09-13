@@ -4,6 +4,7 @@ from .read_file import ReadFileTool
 from .search_files import SearchFilesTool
 from .shell import ShellTool
 from .web_search import WebSearchTool
+from .subagent import SubagentTool, SubagentRegistry
 
 __all__ = [
     "EditFileTool",
@@ -12,4 +13,6 @@ __all__ = [
     "SearchFilesTool",
     "ShellTool",
     "WebSearchTool",
+    "SubagentTool",
+    "SubagentRegistry",
 ]

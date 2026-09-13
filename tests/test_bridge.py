@@ -254,7 +254,8 @@ class BridgeStartTest(unittest.TestCase):
         provider_config_path.write_text(
             json.dumps(
                 {
-                    "provider": "first",
+                    "main_agent": {"provider": "first"},
+                    "subagent": {"provider": ""},
                     "providers": {
                         "first": {
                             "model": "openai/first",

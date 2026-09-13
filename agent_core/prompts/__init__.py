@@ -22,4 +22,9 @@ def load_consolidator_prompt() -> str:
     )
 
 
-__all__ = ["load_consolidator_prompt", "load_system_prompt"]
+def load_subagent_prompt(workspace: Workspace) -> str:
+    template = files("agent_core.prompts").joinpath("SubAgent.md").read_text(encoding="utf-8")
+    return template.replace("{{workspace}}", f"{{{{{workspace.path}}}}}").strip()
+
+
+__all__ = ["load_consolidator_prompt", "load_subagent_prompt", "load_system_prompt"]

@@ -39,21 +39,29 @@ def initialize_default_configs(directory: Path) -> tuple[Path, ...]:
     return tuple(created)
 
 
-def _read_config(path: Path) -> tuple[str, dict[str, object]]:
-    """Return the configured default provider name and all providers."""
+def _read_config(path: Path) -> tuple[str, dict[str, object], dict[str, object]]:
+    """Return main provider, provider definitions, and subagent settings."""
     with path.open(encoding="utf-8") as file:
         data = json.load(file)
 
-    provider = data.get("provider")
+    main_agent = data.get("main_agent")
+    if not isinstance(main_agent, dict):
+        raise ValueError("config field 'main_agent' must be an object")
+    provider = main_agent.get("provider")
+    subagent = data.get("subagent", {})
+    if not isinstance(subagent, dict):
+        raise ValueError("config field 'subagent' must be an object")
     providers = data.get("providers")
     if not isinstance(provider, str) or not provider.strip():
-        raise ValueError("config field 'provider' must be a non-empty string")
+        raise ValueError(
+            "config field 'main_agent.provider' must be a non-empty string"
+        )
     provider = provider.strip()
     if not isinstance(providers, dict):
         raise ValueError("config field 'providers' must be an object")
     if provider not in providers:
         raise ValueError(f"provider '{provider}' is not configured")
-    return provider, providers
+    return provider, providers, subagent
 
 
 def _provider_entry(
@@ -81,15 +89,21 @@ def load_model_options(path: Path) -> tuple[str, dict[str, str]]:
     Keys are deliberately not resolved: listing the choices must not
     require a key for providers the user is not using.
     """
-    default, providers = _read_config(path)
+    default, providers, _ = _read_config(path)
     return default, {
         name: _model_name(_provider_entry(providers, name), name)
         for name in providers
     }
 
 
-def load_config(path: Path, provider: str | None = None) -> ModelConfig:
-    default, providers = _read_config(path)
+def load_config(path: Path, provider: str | None = None, *, subagent: bool = False) -> ModelConfig:
+    default, providers, subagent_config = _read_config(path)
+    if subagent:
+        configured = subagent_config.get("provider", "")
+        if not isinstance(configured, str):
+            raise ValueError("config field 'subagent.provider' must be a string")
+        if configured.strip():
+            provider = configured.strip()
     provider = default if provider is None else provider
     selected = _provider_entry(providers, provider)
     model = _model_name(selected, provider)
