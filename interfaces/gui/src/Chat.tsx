@@ -127,7 +127,8 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
   }, [session.session_id, onBusyChange, onTurnEnd, showItems]);
 
   function connect(): SessionSocket {
-    const socket = new SessionSocket({
+    let socket: SessionSocket;
+    socket = new SessionSocket({
       sessionId: session.session_id,
       provider: model,
       onMessage: (message) => {
@@ -146,6 +147,10 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
         if (applied.finished) void endTurn();
       },
       onClose: () => {
+        // A stale socket can close after a replacement has already been
+        // installed (for example after changing the model). Do not clear
+        // the newer connection in that case.
+        if (socketRef.current !== socket) return;
         socketRef.current = null;
         if (runningRef.current) {
           showNotice({
@@ -155,7 +160,16 @@ export function Chat({ session, disabled, models, model, onModelChange, onBusyCh
           void endTurn();
         }
       },
-      onError: () => showNotice({ level: "error", text: "无法连接 Nosis。" }),
+      onError: () => {
+        // Browsers report an error before closing a WebSocket that went
+        // stale while the page was idle. That is not an interrupted turn;
+        // leave the idle UI quiet. The close callback clears the socket so
+        // the next message can establish a fresh connection.
+        if (socketRef.current !== socket) return;
+        if (runningRef.current) {
+          showNotice({ level: "error", text: "无法连接 Nosis。" });
+        }
+      },
     });
     socketRef.current = socket;
     return socket;
