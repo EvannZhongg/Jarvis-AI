@@ -1,12 +1,10 @@
 # Nosis
 
-个人 AI Agent：Python Agent Runtime，配 TypeScript（Ink + React）终端界面和
-React + assistant-ui 可视化界面。
+个人 AI Agent：Python Agent Runtime，配套 TUI（Ink + React）和 GUI（React + assistant-ui）。TUI 与 GUI 共用同一套 Runtime、Tool、授权和 Session 行为。
 
-## 安装
+## 快速开始
 
-需要 Python >= 3.11、Node.js >= 22（构建和运行终端界面都需要）和
-[uv](https://docs.astral.sh/uv/)。
+环境要求：Python >= 3.11、Node.js >= 22 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
 git clone https://github.com/EvannZhongg/Nosis.git
@@ -17,251 +15,60 @@ npm run build --prefix interfaces/tui
 uv tool install --editable ".[gui]"
 ```
 
-`uv tool install` 会为 Nosis 建一个独立环境，把 `nosis` 和 `nosis-gui` 装到
-`~/.local/bin`（该目录不在 PATH 上时 uv 会提示需要执行的命令）；装完后在任意
-目录、任意新开的终端直接执行，不需要激活虚拟环境。更新仓库代码后如果启动了新
-依赖，重新执行一次上面的 `uv tool install` 命令即可安装。
+该命令会安装 `nosis` 和 `nosis-gui`；仓库新增依赖后重新执行即可更新安装环境。
 
-Windows 上 `shell` Tool 需要 [Git for Windows](https://git-scm.com/download/win)
-提供的 Git Bash。命令统一在 POSIX shell 中执行（macOS/Linux 用 `/bin/sh`，
-Windows 用 Git Bash），因此命令写法在各平台一致；找不到 Git Bash 时 `shell`
-会返回安装提示。
-
-## 使用
-
-在任意项目目录下启动：
+在任意 Workspace 中启动 TUI：
 
 ```bash
 cd ~/projects/my-project
 nosis
 ```
 
-未传 `--workspace` 时，启动命令的当前目录就是 Workspace。可选参数：
-
-| 参数 | 说明 |
-| --- | --- |
-| `--workspace <path>` | 指定 Workspace，默认当前目录 |
-| `--session <id>` | 恢复已有 Session |
-| `--config <path>` | 指定 Provider 配置文件 |
-| `--agent-config <path>` | 指定 Agent 行为配置文件 |
-
-按键：
-
-| 按键 | 作用 |
-| --- | --- |
-| `Enter` | 提交输入；Agent 执行中输入会排队 |
-| `←` / `→` | 在 shell 授权中切换 Allow / Deny |
-| `Enter` | 确认当前授权选项 |
-| `Esc` | 拒绝授权；Agent 执行中取消当前轮次 |
-| `Ctrl+C` | 取消当前轮次；空输入时退出 |
-| `Ctrl+D` | 退出 |
-
-## 配置
-
-首次运行会在 `~/.nosis/` 下生成 `provider_config.json` 和
-`agent_config.json`。
-
-`agent_config.json` 控制 Agent 行为：
-
-```json
-{
-  "max_same_tool_calls": 5,
-  "max_output_tokens": 8192,
-  "shell_timeout_seconds": 60,
-  "tools": {
-    "read_file": true,
-    "edit_file": true,
-    "search_files": true,
-    "list_directory": true,
-    "shell": true,
-    "web_search": false,
-    "analyze_image": true
-  }
-}
-```
-
-MCP Server 通过同一文件中的 `mcp` 字段配置。支持 `stdio` 和
-`streamable_http`，启用后工具会以 `mcp__服务器名__工具名` 的命名空间注册；
-`tool_allowlist` 可限制暴露给模型的工具，`approval` 为 `prompt` 时每次调用会
-请求人工确认。stdio 示例：
-
-```json
-{
-  "mcp": {
-    "enabled": true,
-    "servers": {
-      "filesystem": {
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
-        "cwd": ".",
-        "tool_allowlist": ["read_file"],
-        "approval": "prompt"
-      }
-    }
-  }
-}
-```
-
-HTTP Server 使用 `transport: "streamable_http"` 和 `url`，请求头中的
-`${ENV_NAME}` 会从环境变量读取。MCP 配置采用严格校验，传输方式不匹配的字段、
-未知字段或缺失的必填字段都会导致启动失败。
-
-| 字段 | 说明 |
-| --- | --- |
-| `max_same_tool_calls` | 单轮内完全相同的 Tool Call 最多连续执行几次，超过即终止本轮 |
-| `max_output_tokens` | 每次回答预留的输出 token 数；hard limit 为模型上限减去该值 |
-| `context.compression` | 可选上下文压缩设置：`enabled`、`trigger_ratio`、`target_ratio`；压缩阈值与目标均相对于 hard limit 计算，且 target 必须小于 trigger |
-| `shell_timeout_seconds` | shell 默认超时，默认 60 秒、上限 900 秒；单次调用可用 `timeout_seconds` 指定更短值 |
-| `tools` | 内置 Tool 开关：显式写 `true` 才启用，未写出的 Tool 保持关闭；未知名称或非布尔值会导致启动失败 |
-
-`provider_config.json` 中用 `main_agent.provider` 选择主 Agent 服务商，`providers` 里为每个
-服务商配置 LiteLLM 模型名、API URL 和密钥。`subagent.provider` 可单独指定子 Agent
-服务商；留空字符串表示复用主 Agent：
-
-```json
-{
-  "main_agent": {"provider": "deepseek"},
-  "subagent": {"provider": ""},
-  "providers": {
-    "deepseek": {
-      "model": "deepseek/deepseek-chat",
-      "url": "https://api.deepseek.com",
-      "key": "${DEEPSEEK_KEY}",
-      "max_context_tokens": 1048576
-    }
-  }
-}
-```
-
-* `key` 可以直接填写，也可以用 `${ENV_NAME}` 从环境变量或配置目录下的 `.env`
-  读取。只填当前所选服务商的密钥，Ollama 等无密钥服务可以省略。
-* `max_context_tokens` 可选：填写时以它作为模型最大上下文；省略时读取 LiteLLM
-  的模型元数据，元数据缺失则必须显式填写。
-* LiteLLM 会从模型元数据的 `supports_vision` 自动识别图片输入能力，不需要为每个
-  Provider 重复填写模态列表。主模型支持图片时，附件直接作为原生多模态消息发送。
-* `main_agent.vision_provider` 可选，仅用于覆盖视觉 Provider 的自动选择。主模型是纯
-  文本模型且未指定覆盖时，系统会从已配置且凭据可用的 Provider 中自动选择第一个
-  LiteLLM 声明支持视觉的模型；没有可用视觉 Provider 时，`analyze_image` 不会注册。
-* OpenAI 兼容服务需要在 `model` 上带 LiteLLM 的接口前缀，例如智谱填
-  `openai/glm-5.3`、`url` 填 `https://open.bigmodel.cn/api/paas/v4/`。`providers`
-  里的条目名称不会自动作为 LiteLLM 的服务商标识。
-
-密钥放在 `~/.nosis/.env`：
-
-```dotenv
-DEEPSEEK_KEY=your-api-key
-EXA_API_KEY=your-api-key
-```
-
-`EXA_API_KEY` 只在启用 `web_search` 时需要，在
-<https://exa.ai/products/search> 申请。缺这个密钥不影响启动和其余 Tool，只有
-`web_search` 调用会返回缺少密钥的错误。
-
-`.env`、`provider_config.json` 和 Session 数据都不会提交到仓库。
-
-GUI 支持上传图片。图片会保存为工作区下的 `.nosis/attachments/<id>.<ext>`，Session
-只记录路径和 MIME 类型；只有 Provider 发起请求时才会读取并转换成 API 所需格式。
-Runtime 会把工作区根目录放入每次 `LLMRequest` 的媒体解析上下文，因此解析不依赖
-进程当前目录；直接调用 Provider 时，应在 `LLMRequest(media_root=workspace.path)`
-中提供对应工作区根目录。
-
-## GUI
-
-构建前端并启动（Python 依赖在安装步骤里已经装好）：
+启动 GUI：
 
 ```bash
 npm install --prefix interfaces/gui
 npm run build --prefix interfaces/gui
-nosis-gui
-```
-
-打开 <http://127.0.0.1:8737>，服务只监听本机地址。参数与 `nosis` 一致：
-
-```bash
 nosis-gui --workspace ~/projects/my-project
-nosis-gui --config path/to/provider_config.json --agent-config path/to/agent_config.json
 ```
 
-GUI 和 TUI 共用同一个 Agent Runtime（每个 WebSocket 连接对应一个
-`python -m interfaces.bridge` 子进程），模型配置、Tool 注册、Shell 授权、Session
-落盘和取消行为都一致，两边可以互相恢复同一批 Session。执行中可以点「停止」中断
-当前轮次，等同 TUI 的 `Esc`；被取消的轮次不会写入 Session 文件，已执行的工具
-操作不会撤销。同一个 Session 同一时刻只允许一个页面驱动 Agent；不同 Session
-可以并行执行。
+GUI 默认监听 <http://127.0.0.1:8737>。Windows 用户需要安装 [Git for Windows](https://git-scm.com/download/win)，`shell` Tool 使用其中的 Git Bash。
 
-前端开发时先启动 `nosis-gui`，另开终端执行
-`npm run dev --prefix interfaces/gui`，访问 Vite 显示的
-<http://127.0.0.1:5173>，API 和 WebSocket 会代理到 Python 服务。界面代码在
-`interfaces/gui/`，构建产物在 `interfaces/gui/static/`（不提交）。
+## 文档导航
 
-## 会话与工具
+| 文档 | 内容 |
+| --- | --- |
+| [Agent Core](agent_core/README.md) | Runtime、Provider、配置、Tool、MCP 和 Session |
+| [TUI](interfaces/tui/README.md) | 终端界面、命令行参数、快捷键和前端开发 |
+| [GUI](interfaces/gui/README.md) | Web 界面、附件、开发服务器和前端测试 |
+| [Bridge](interfaces/bridge/README.md) | Runtime 子进程、授权和取消流程 |
+| [Protocol](interfaces/protocol/README.md) | TUI/GUI 共用的消息协议类型 |
 
-每轮成功对话都会把本轮新增的 Session Items、发送给模型的完整消息上下文和模型
-响应追加到全局配置目录 `~/.nosis/sessions/<SESSION_ID>/<SESSION_ID>.jsonl`，每行一个
-JSON 对象；超过回灌上限的完整 Tool Result 保存在同一目录的
-`<TOOL_CALL_ID>.txt`。用 `nosis --session SESSION_ID` 恢复历史对话。
-
-内置 Tool 有 `read_file`、`edit_file`、`search_files`、`list_directory`、
-`shell` 和 `web_search`：
-
-* 文件工具只接受 Workspace 内的相对路径。`search_files` 递归搜索 UTF-8 文本，
-  默认跳过超大文件、非文本文件、`.git`/`node_modules`/`build` 等目录，以及指向
-  Workspace 之外的链接。
-* `shell` 以 Workspace 为当前目录执行命令，每次执行前都需要人工确认，结果包含
-  退出码、标准输出、标准错误、是否超时和实际超时秒数。
-* `web_search` 通过 [Exa](https://exa.ai) 检索公网内容，返回排序后的标题、URL、
-  发布日期和页面中最相关的片段；可以限制或排除域名，单次最多返回 10 条结果。
-  该 Tool 默认关闭，在 `agent_config.json` 里把它设为 `true` 后生效，并需要
-  `.env` 里的 `EXA_API_KEY`。
-* 回灌给模型的 Tool Result 不超过 16K chars；更大的结果转存为上面的 Session
-  Artifact，模型只拿到路径、字符数和预览。
-
-## 架构
-
-Agent Runtime 与界面解耦：界面进程不直接调用 Runtime，而是启动一个 Python
-子进程，通过 stdio 上的 newline-delimited JSON 通信。
-
-```text
-nosis (Python console script)
-  └─ node interfaces/tui/dist/app.js      Ink + React 界面，持有 TTY
-       └─ python -m interfaces.bridge      Agent Runtime
-            └─ agent_core                  与界面无关
-
-nosis-gui (Python console script)
-  └─ interfaces/gui/server.py             HTTP API + WebSocket 中继
-       └─ python -m interfaces.bridge      Agent Runtime
-            └─ agent_core                  与界面无关
-```
+## 项目结构
 
 ```text
 Nosis/
-├── agent_core/          Agent Runtime，不依赖任何界面
-└── interfaces/
-    ├── launch.py        nosis 命令入口
-    ├── bridge/          Runtime 与协议的适配层
-    ├── protocol/        TUI 与 GUI 共用的协议类型
-    ├── tui/             TypeScript + Ink + React 终端界面
-    └── gui/             FastAPI 中继 + React + assistant-ui 界面
+├── agent_core/       Agent Runtime
+├── interfaces/
+│   ├── bridge/       Runtime 与前端之间的适配层
+│   ├── protocol/     共用协议类型
+│   ├── tui/          Ink + React 终端界面
+│   └── gui/          FastAPI + React 可视化界面
+└── tests/             Python Runtime 与接口测试
 ```
-
-Bridge 只负责把 `AgentEvent` 翻译成协议消息，界面只负责渲染协议消息和采集输入；
-GUI 服务端同样只做转发，不含任何 Agent 执行逻辑。Agent 执行中按 `Esc`、
-`Ctrl+C` 或点「停止」会向 Runtime 发送 `SIGINT` 取消当前轮次。
 
 ## 测试
 
-Python 测试使用 Mock Provider，不需要真实 API Key。在仓库里跑测试需要虚拟环境：
+Python 测试使用 Mock Provider，不需要真实 API Key：
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # Windows PowerShell: .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[gui]"
-
 python -m unittest discover -s tests -v
 ```
 
-界面测试：
+前端测试和类型检查：
 
 ```bash
 npm test --prefix interfaces/tui
